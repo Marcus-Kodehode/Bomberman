@@ -1,56 +1,117 @@
-using System;
 using BombermanBackend.Models;
 using BombermanBackend.Logic;
+using System;
+using System.Linq;
 
-var session = new GameSession(11, 11);
-session.AddPlayer("player1", 1, 1);
+const int mapWidth = 7;
+const int mapHeight = 7;
+
+var session = new GameSession(mapWidth, mapHeight);
 var manager = new GameManager(session);
-var player = session.Players["player1"];
+var printer = new MapPrinter();
 
-// Step 1: Move right 5 times
-for (int i = 1; i <= 5; i++)
+// Initialize Map
+for (int x = 0; x < session.Map.GetLength(0); x++)
+    for (int y = 0; y < session.Map.GetLength(1); y++)
+        session.Map[x, y] = TileType.Empty;
+
+for (int x = 0; x < session.Map.GetLength(0); x++)
 {
-    Console.WriteLine($"Move {i}: Trying to move right...");
+    session.Map[x, 0] = TileType.Wall;
+    session.Map[x, session.Map.GetLength(1) - 1] = TileType.Wall;
+}
+for (int y = 1; y < session.Map.GetLength(1) - 1; y++)
+{
+    session.Map[0, y] = TileType.Wall;
+    session.Map[session.Map.GetLength(0) - 1, y] = TileType.Wall;
+}
+session.Map[3, 3] = TileType.Wall;
+session.Map[3, 4] = TileType.Wall;
+session.Map[1, 3] = TileType.Wall;
+session.Map[2, 5] = TileType.Wall;
+session.Map[4, 2] = TileType.Wall;
 
-    bool moved = manager.MovePlayer("player1", "right");
 
-    if (moved)
-        Console.WriteLine($"✅ Success! New position: ({player.X}, {player.Y})");
+// Simulation Start
+var player1 = new Player { Id = "player1", X = 1, Y = 1 };
+session.AddPlayer(player1);
+
+Console.Clear();
+Console.WriteLine($"Initial State ({mapWidth}x{mapHeight}):");
+printer.PrintMap(session);
+Console.WriteLine("Press Enter to advance simulation step-by-step...");
+Console.ReadLine(); // Wait for user input to start
+
+int actionCount = 0;
+int tickCount = 0;
+
+// Function to perform move and advance time
+void DoMove(int dx, int dy)
+{
+    actionCount++;
+    var player = session.Players[player1.Id];
+    int currentX = player.X;
+    int currentY = player.Y;
+    int targetX = currentX + dx;
+    int targetY = currentY + dy;
+
+    Console.WriteLine($"\nAction {actionCount}: Try move to ({targetX}, {targetY})");
+    bool success = manager.MovePlayer(player1.Id, targetX, targetY);
+    if (!success)
+    {
+        // Only print blocked message if it wasn't out of bounds (already handled in helper)
+        if (targetX >= 0 && targetX < session.Map.GetLength(0) && targetY >= 0 && targetY < session.Map.GetLength(1))
+        {
+            Console.WriteLine($"-> Blocked by {session.Map[targetX, targetY]}. Pos: ({player.X}, {player.Y})");
+        }
+        else
+        {
+            Console.WriteLine($"-> Out of bounds.");
+        }
+    }
     else
     {
-        Console.WriteLine($"❌ Blocked! Stayed at: ({player.X}, {player.Y})");
-        break;
+        Console.WriteLine($"-> Success. New pos: ({player.X}, {player.Y})");
     }
 
-    MapPrinter.PrintMap(session, showCoords: true);
+    // Advance game time AFTER movement attempt
+    tickCount++;
+    Console.WriteLine($"--- Tick {tickCount} ---");
+    manager.Tick(); // Update bombs, etc.
+    printer.PrintMap(session);
+    Console.WriteLine("Press Enter for next action...");
+    Console.ReadLine(); // Wait
 }
 
-// Step 2: Place bomb at current position (6,1)
-Console.WriteLine("Placing bomb at current position...");
-manager.PlaceBomb("player1");
-MapPrinter.PrintMap(session, true);
+// Function to place bomb and advance time
+void DoPlaceBomb()
+{
+    actionCount++;
+    var player = session.Players[player1.Id];
+    Console.WriteLine($"\nAction {actionCount}: Placing Bomb at ({player.X}, {player.Y}).");
+    manager.PlaceBomb(player1.Id, player.X, player.Y); // Use manager now
 
-// Step 3: Move back to (5,1)
-Console.WriteLine("Step back:");
-manager.MovePlayer("player1", "left");
-MapPrinter.PrintMap(session, true);
+    // Advance game time AFTER placing bomb
+    tickCount++;
+    Console.WriteLine($"--- Tick {tickCount} ---");
+    manager.Tick(); // Update bombs, etc.
+    printer.PrintMap(session);
+    Console.WriteLine("Press Enter for next action...");
+    Console.ReadLine(); // Wait
+}
 
-// Step 4: Move up to (5,0)
-Console.WriteLine("Move up:");
-manager.MovePlayer("player1", "up");
-MapPrinter.PrintMap(session, true);
 
-// Step 5: Try to move right into wall (6,0)
-Console.WriteLine("Try to move right into a wall:");
-bool wallTest = manager.MovePlayer("player1", "right");
+// Refined Simulation Sequence (Step-by-step)
+DoMove(1, 0);  // 1: R to (2,1) - Tick 1
+DoMove(0, 1);  // 2: D to (2,2) - Tick 2
+DoPlaceBomb(); // 3: Place Bomb at (2,2) - Tick 3 (Bomb fuse = 3)
+DoMove(-1, 0); // 4: L to (1,2) - Tick 4 (Bomb fuse = 2)
+DoMove(0, 1);  // 5: Try D into Wall (1,3) - Fails - Tick 5 (Bomb fuse = 1)
 
-if (wallTest)
-    Console.WriteLine("⚠️ Unexpected! Player moved into wall!");
-else
-    Console.WriteLine("✅ Correctly blocked by wall.");
-
-MapPrinter.PrintMap(session, true);
-Console.WriteLine("Game session ended. Press any key to exit.");
-Console.ReadKey();
-// End of the program
-// This is a simple console application that simulates a Bomberman game session.
+// Need one more tick for bomb to explode
+tickCount++;
+Console.WriteLine($"\n--- Tick {tickCount} ---");
+manager.Tick(); // Tick 6 (Bomb fuse = 0 -> DetonateBomb is called)
+printer.PrintMap(session);
+Console.WriteLine("\nBomb should have exploded. Press Enter to exit.");
+Console.ReadLine();

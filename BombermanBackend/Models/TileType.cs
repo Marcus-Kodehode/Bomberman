@@ -1,8 +1,10 @@
-public enum TileType
+namespace BombermanBackend.Models
 {
-    Empty,
-    Wall,
-    Destructible,
-    Bomb,
-    Explosion
+    public enum TileType
+    {
+        Empty,
+        Wall,
+        Bomb,
+        Player
+    }
 }

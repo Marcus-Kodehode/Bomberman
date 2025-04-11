@@ -1,0 +1,20 @@
+# Build files
+bin/
+obj/
+
+# VS Code settings
+.vscode/
+
+# Rider settings
+.idea/
+
+# User-specific files
+*.user
+*.suo
+
+# Test logs
+TestResults/
+
+# Dotnet artifacts
+*.log
+*.vs/

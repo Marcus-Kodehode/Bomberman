@@ -33,20 +33,19 @@ namespace BombermanBackend.Models
             }
         }
 
-        // Ensure both paths return a value
+        // --- FIX: Added bounds check ---
         public bool IsTileEmpty(int x, int y)
         {
             if (x < 0 || x >= Map.GetLength(0) || y < 0 || y >= Map.GetLength(1))
             {
-                return false; // Return for out of bounds
+                return false; // Out of bounds is not empty
             }
-            // Return based on tile type if in bounds
             return Map[x, y] == TileType.Empty;
         }
+        // --- END FIX ---
 
         public bool MovePlayer(string playerId, int newX, int newY)
         {
-            // Removed DEBUG log for cleaner code now
             if (!Players.TryGetValue(playerId, out Player? player)) return false;
 
             int oldX = player.X; int oldY = player.Y;

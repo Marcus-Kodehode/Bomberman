@@ -41,10 +41,6 @@ dotnet test
 
 ## Next Steps / TODOs
 
-- Implement detailed explosion effects (e.g., temporary blast tiles, damage calculation).
-- Add different power-ups (e.g., increase `MaxBombs`, `BlastRadius`, movement speed).
-- Implement player lives and respawn mechanics.
-- Refine chain reaction logic if needed.
 - Integrate with message bus for handling commands and broadcasting state changes.
 - Add comprehensive unit tests for explosion scenarios.
 - Improve map representation if needed (e.g., multiple items per tile).

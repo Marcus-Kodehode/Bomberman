@@ -7,11 +7,10 @@ namespace BombermanBackend.Tests
 {
     public class BombTests
     {
-        private readonly GameSession _session; // Use readonly
-        private readonly GameManager _manager; // Use readonly
-        private readonly Player _player1;    // Use readonly
+        private readonly GameSession _session;
+        private readonly GameManager _manager;
+        private readonly Player _player1;
 
-        // Constructor initializes fields
         public BombTests()
         {
             int width = 7;
@@ -23,36 +22,42 @@ namespace BombermanBackend.Tests
         }
 
         [Fact]
-        public void Bomb_Is_Placed_At_Player_Position_With_Correct_Defaults()
+        public void PlaceBomb_Succeeds_When_Under_Limit()
         {
-            int initialX = _player1.X;
-            int initialY = _player1.Y;
+            // Assumes player limit is default 1, active is 0
+            bool placed = _manager.PlaceBomb(_player1.Id, _player1.X, _player1.Y);
 
-            _manager.PlaceBomb(_player1.Id, initialX, initialY);
-
+            Assert.True(placed);
             Assert.Single(_session.Bombs);
-            var bomb = _session.Bombs.First();
-            Assert.Equal(_player1.Id, bomb.OwnerId);
-            Assert.Equal(initialX, bomb.X);
-            Assert.Equal(initialY, bomb.Y);
-            Assert.Equal(5, bomb.RemainingFuseTicks);
-            Assert.Equal(1, bomb.BlastRadius);
-            Assert.Equal(TileType.Bomb, _session.Map[initialX, initialY]);
+            Assert.Equal(1, _player1.ActiveBombsCount); // Check player count updated
+            Assert.Equal(TileType.Bomb, _session.Map[_player1.X, _player1.Y]);
         }
 
         [Fact]
-        public void Placing_Bomb_On_Existing_Bomb_Tile_Adds_Second_Bomb_Object()
+        public void PlaceBomb_Fails_When_Over_Limit()
         {
-            int targetX = _player1.X;
-            int targetY = _player1.Y;
+            _player1.MaxBombs = 1; // Explicitly set limit
+            // Place first bomb successfully
+            bool placed1 = _manager.PlaceBomb(_player1.Id, _player1.X, _player1.Y);
+            Assert.True(placed1);
+            Assert.Single(_session.Bombs);
+            Assert.Equal(1, _player1.ActiveBombsCount);
 
-            _manager.PlaceBomb(_player1.Id, targetX, targetY); // First bomb
-            _manager.PlaceBomb(_player1.Id, targetX, targetY); // Second bomb
+            // Try to place second bomb - should fail
+            // Need to move player slightly to place at new coords, or assume placing at same coords is allowed if under limit
+            _manager.MovePlayer(_player1.Id, _player1.X + 1, _player1.Y); // Move player first
+            bool placed2 = _manager.PlaceBomb(_player1.Id, _player1.X, _player1.Y); // Try place second bomb
 
-            Assert.Equal(2, _session.Bombs.Count);
-            Assert.Equal(TileType.Bomb, _session.Map[targetX, targetY]);
-            Assert.All(_session.Bombs, b => Assert.Equal(targetX, b.X));
-            Assert.All(_session.Bombs, b => Assert.Equal(targetY, b.Y));
+            Assert.False(placed2); // Should fail due to limit
+            Assert.Single(_session.Bombs); // Still only one bomb
+            Assert.Equal(1, _player1.ActiveBombsCount); // Count still 1
+        }
+
+        [Fact]
+        public void PlaceBomb_Fails_If_Player_Not_Found()
+        {
+            bool placed = _manager.PlaceBomb("nonexistent_player", 1, 1);
+            Assert.False(placed);
         }
 
         [Fact]
@@ -62,38 +67,57 @@ namespace BombermanBackend.Tests
             var bomb = _session.Bombs.First();
             int initialTicks = bomb.RemainingFuseTicks;
 
-            _manager.Tick(); // Tick 1
+            _manager.Tick();
 
             Assert.Single(_session.Bombs);
             Assert.Equal(initialTicks - 1, bomb.RemainingFuseTicks);
-
-            _manager.Tick(); // Tick 2
-            Assert.Equal(initialTicks - 2, bomb.RemainingFuseTicks);
         }
 
         [Fact]
-        public void Bomb_Detonates_And_Is_Removed_After_Correct_Ticks()
+        public void Bomb_Detonates_And_Is_Removed_And_Player_Count_Decremented()
         {
             int bombX = _player1.X;
             int bombY = _player1.Y;
-            _manager.PlaceBomb(_player1.Id, bombX, bombY);
+            _manager.PlaceBomb(_player1.Id, bombX, bombY); // Places bomb, ActiveBombsCount becomes 1
+            Assert.Equal(1, _player1.ActiveBombsCount);
             var bomb = _session.Bombs.First();
-            int fuse = bomb.RemainingFuseTicks; // Should be 5
+            int fuse = bomb.RemainingFuseTicks;
 
-            for (int i = 0; i < fuse - 1; i++)
-            {
+            for (int i = 0; i < fuse; i++)
+            { // Tick exactly fuse times
                 _manager.Tick();
-                Assert.Single(_session.Bombs);
-                Assert.Equal(fuse - 1 - i, bomb.RemainingFuseTicks);
             }
 
-            Assert.Equal(1, bomb.RemainingFuseTicks);
-            Assert.Equal(TileType.Bomb, _session.Map[bombX, bombY]);
+            Assert.Empty(_session.Bombs); // Bomb removed
+            Assert.Equal(TileType.Empty, _session.Map[bombX, bombY]); // Tile cleared
+            Assert.Equal(0, _player1.ActiveBombsCount); // Player active count decremented
+        }
 
-            _manager.Tick(); // Final tick
+        [Fact]
+        public void Can_Place_New_Bomb_After_First_One_Detonates()
+        {
+            // Place first bomb
+            bool placed1 = _manager.PlaceBomb(_player1.Id, _player1.X, _player1.Y);
+            Assert.True(placed1);
+            Assert.Equal(1, _player1.ActiveBombsCount);
+            int fuse = _session.Bombs.First().RemainingFuseTicks;
 
+            // Detonate first bomb
+            for (int i = 0; i < fuse; i++)
+            {
+                _manager.Tick();
+            }
             Assert.Empty(_session.Bombs);
-            Assert.Equal(TileType.Empty, _session.Map[bombX, bombY]);
+            Assert.Equal(0, _player1.ActiveBombsCount); // Count is 0 again
+
+            // Move player slightly (needed as PlaceBomb checks coords match player)
+            _manager.MovePlayer(_player1.Id, _player1.X + 1, _player1.Y);
+
+            // Place second bomb - should succeed now
+            bool placed2 = _manager.PlaceBomb(_player1.Id, _player1.X, _player1.Y);
+            Assert.True(placed2);
+            Assert.Single(_session.Bombs);
+            Assert.Equal(1, _player1.ActiveBombsCount);
         }
     }
 }

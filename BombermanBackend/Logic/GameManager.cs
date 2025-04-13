@@ -30,9 +30,28 @@ namespace BombermanBackend.Logic
             return true;
         }
 
+        // Tick now cleans up old explosions *before* processing new ones
         public void Tick()
         {
+            CleanupExplosions();
             UpdateBombs();
+        }
+
+        // New method to clear explosion tiles from the previous tick
+        private void CleanupExplosions()
+        {
+            int width = _session.Map.GetLength(0);
+            int height = _session.Map.GetLength(1);
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    if (_session.Map[x, y] == TileType.Explosion)
+                    {
+                        _session.Map[x, y] = TileType.Empty;
+                    }
+                }
+            }
         }
 
         private void UpdateBombs()
@@ -58,6 +77,7 @@ namespace BombermanBackend.Logic
             }
         }
 
+        // DetonateBomb now places Explosion tiles instead of Empty
         private void DetonateBomb(Bomb bomb, Queue<Bomb> detonationQueue, HashSet<Bomb> processedBombs)
         {
             if (_session.Players.TryGetValue(bomb.OwnerId, out Player? owner))
@@ -66,7 +86,7 @@ namespace BombermanBackend.Logic
             }
 
             HashSet<(int, int)> affectedTiles = new HashSet<(int, int)>();
-            affectedTiles.Add((bomb.X, bomb.Y)); // Bomb's own tile
+            affectedTiles.Add((bomb.X, bomb.Y));
 
             int[] dx = { 0, 0, 1, -1 };
             int[] dy = { 1, -1, 0, 0 };
@@ -84,26 +104,15 @@ namespace BombermanBackend.Logic
                     affectedTiles.Add((targetX, targetY));
                     TileType tileType = _session.Map[targetX, targetY];
 
-                    // Stop blast if it hits an indestructible wall
-                    if (tileType == TileType.Wall)
-                        break;
-
-                    // --- ADDED: Handle DestructibleWall ---
-                    // If it hits a destructible wall, stop blast *after* this tile
-                    if (tileType == TileType.DestructibleWall)
-                        break;
-                    // --- END ADDED ---
-
-                    // Stop blast propagation *after* hitting a player or another bomb
-                    if (tileType == TileType.Player || tileType == TileType.Bomb)
-                        break;
+                    if (tileType == TileType.Wall) break; // Stop at indestructible walls
+                    if (tileType == TileType.DestructibleWall) break; // Stop *after* hitting destructible walls
+                    if (tileType == TileType.Player || tileType == TileType.Bomb) break; // Stop *after* hitting player/bomb
                 }
             }
 
             List<Player> playersToRemove = new List<Player>();
             foreach (var (x, y) in affectedTiles)
             {
-                // Check for players
                 Player? playerOnTile = _session.Players.Values.FirstOrDefault(p => p.X == x && p.Y == y);
                 if (playerOnTile != null && !playersToRemove.Contains(playerOnTile))
                 {
@@ -111,7 +120,6 @@ namespace BombermanBackend.Logic
                     playersToRemove.Add(playerOnTile);
                 }
 
-                // Check for other bombs (chain reaction)
                 Bomb? bombOnTile = _session.Bombs.FirstOrDefault(b => b.X == x && b.Y == y);
                 if (bombOnTile != null)
                 {
@@ -123,15 +131,12 @@ namespace BombermanBackend.Logic
                     }
                 }
 
-                // --- MODIFIED: Update map tile ---
+                // --- MODIFIED: Update map tile to Explosion ---
                 TileType currentTileType = _session.Map[x, y];
-                // Clear tile if it's not an indestructible wall
-                if (currentTileType != TileType.Wall)
+                // Turn Empty, Player, Bomb, DestructibleWall into Explosion
+                if (currentTileType != TileType.Wall) // Indestructible walls remain
                 {
-                    // If it was destructible, it's now empty. Otherwise clear it.
-                    // Also handles clearing Bomb/Player/Empty tiles.
-                    _session.Map[x, y] = TileType.Empty;
-                    // TODO: Maybe drop powerup if DestructibleWall was destroyed?
+                    _session.Map[x, y] = TileType.Explosion; // Set to explosion
                 }
                 // --- END MODIFIED ---
             }

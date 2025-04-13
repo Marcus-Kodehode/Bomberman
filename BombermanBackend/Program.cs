@@ -15,6 +15,7 @@ for (int x = 0; x < session.Map.GetLength(0); x++)
     for (int y = 0; y < session.Map.GetLength(1); y++)
         session.Map[x, y] = TileType.Empty;
 
+// Border walls
 for (int x = 0; x < session.Map.GetLength(0); x++)
 {
     session.Map[x, 0] = TileType.Wall;
@@ -25,11 +26,20 @@ for (int y = 1; y < session.Map.GetLength(1) - 1; y++)
     session.Map[0, y] = TileType.Wall;
     session.Map[session.Map.GetLength(0) - 1, y] = TileType.Wall;
 }
+// Internal walls
 session.Map[3, 3] = TileType.Wall;
 session.Map[3, 4] = TileType.Wall;
-session.Map[1, 3] = TileType.Wall;
+// session.Map[1, 3] = TileType.Wall; // Removed this to place destructible below
 session.Map[2, 5] = TileType.Wall;
 session.Map[4, 2] = TileType.Wall;
+
+// --- ADDED: Destructible Walls ---
+session.Map[1, 3] = TileType.DestructibleWall; // Place one where blast will hit left
+session.Map[3, 2] = TileType.DestructibleWall; // Place one where blast will hit right
+session.Map[4, 4] = TileType.DestructibleWall;
+session.Map[5, 3] = TileType.DestructibleWall;
+// --- END ADDED ---
+
 
 // Simulation Start
 var player1 = new Player { Id = "player1", X = 1, Y = 1 };
@@ -43,10 +53,8 @@ Console.ReadLine();
 
 int actionCount = 0;
 int tickCount = 0;
-Bomb? placedBomb = null; // Keep track if needed, though GameManager handles list
-int bombX = -1, bombY = -1; // Keep track for detonation message/check
 
-// Helper Functions
+// Helper Functions (Unchanged)
 void DoMove(int dx, int dy)
 {
     actionCount++;
@@ -76,26 +84,20 @@ void DoMove(int dx, int dy)
     DoTick();
 }
 
-// Updated DoPlaceBomb to check return value
 void DoPlaceBomb()
 {
     actionCount++;
     var player = session.Players[player1.Id];
     Console.WriteLine($"\nAction {actionCount}: Try placing Bomb at ({player.X}, {player.Y}).");
-    bool success = manager.PlaceBomb(player1.Id, player.X, player.Y); // Use manager, check result
+    bool success = manager.PlaceBomb(player1.Id, player.X, player.Y);
 
     if (success)
     {
         Console.WriteLine("-> Bomb placed successfully.");
-        // Only track position if needed for messages later
-        bombX = player.X;
-        bombY = player.Y;
     }
     else
     {
         Console.WriteLine($"-> Failed to place bomb (Limit reached or other condition). Active: {player.ActiveBombsCount}, Max: {player.MaxBombs}");
-        bombX = -1; // Ensure we don't think a bomb exploded if placement failed
-        bombY = -1;
     }
     DoTick();
 }
@@ -110,17 +112,18 @@ void DoTick()
     Console.ReadLine();
 }
 
-// Simulation Sequence
+// Simulation Sequence (Bomb at 2,3 hits destructible walls at 1,3 and potentially 3,3 if wall removed)
+// Bomb at (2,3) should hit X at (1,3) and # at (3,3)
 DoMove(1, 0);  // 1: R to (2,1) - Tick 1
 DoMove(0, 1);  // 2: D to (2,2) - Tick 2
-DoPlaceBomb(); // 3: Place Bomb at (2,2) - Tick 3 (Bomb fuse = 5)
-DoMove(-1, 0); // 4: L to (1,2) - Tick 4 (Bomb fuse = 4)
-DoMove(0, 1);  // 5: Try D into Wall (1,3) - Fails - Tick 5 (Bomb fuse = 3)
+DoMove(0, 1);  // 3: D to (2,3) - Tick 3
+DoPlaceBomb(); // 4: Place Bomb at (2,3) - Tick 4 (Bomb fuse = 5 -> 4)
+DoMove(0, -1); // 5: U to (2,2) - Tick 5 (Bomb fuse = 4 -> 3)
 
-// Tick until bomb should explode (Total 5 ticks after placement tick)
+Console.WriteLine("\nPlayer moved away. Ticking until detonation...");
 while (session.Bombs.Any(b => b.OwnerId == player1.Id))
 {
-    DoTick();
+    DoTick(); // Tick 6(F2), Tick 7(F1), Tick 8(F0 -> BOOM)
 }
 
 Console.WriteLine($"\n{actionCount} Actions performed. Bomb should have exploded. Press Enter to exit.");

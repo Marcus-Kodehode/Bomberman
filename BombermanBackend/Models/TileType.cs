@@ -3,8 +3,10 @@ namespace BombermanBackend.Models
     public enum TileType
     {
         Empty,
-        Wall,
+        Wall, // Indestructible Wall
         Bomb,
-        Player
+        Player,
+        DestructibleWall // New type for walls that can be destroyed
+        // Future: Explosion, Powerup etc.
     }
 }

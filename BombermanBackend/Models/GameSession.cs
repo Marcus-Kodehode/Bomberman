@@ -21,7 +21,6 @@ namespace BombermanBackend.Models
                 Players[player.Id] = player;
                 if (player.X >= 0 && player.X < Map.GetLength(0) && player.Y >= 0 && player.Y < Map.GetLength(1))
                 {
-                    // Ensure player doesn't spawn inside a wall
                     if (Map[player.X, player.Y] == TileType.Empty)
                     {
                         Map[player.X, player.Y] = TileType.Player;
@@ -30,16 +29,19 @@ namespace BombermanBackend.Models
             }
         }
 
-        public void AddBomb(string playerId, int x, int y)
+        // --- MODIFICATION START ---
+        // Updated signature to accept blastRadius
+        public void AddBomb(string playerId, int x, int y, int blastRadius)
         {
             if (x >= 0 && x < Map.GetLength(0) && y >= 0 && y < Map.GetLength(1))
             {
-                // Consider checking if Map[x,y] allows bombs (e.g., not Wall)
-                Bomb bomb = new Bomb(playerId, x, y);
+                // Pass blastRadius to the Bomb constructor
+                Bomb bomb = new Bomb(playerId, x, y, blastRadius);
                 Bombs.Add(bomb);
                 Map[x, y] = TileType.Bomb;
             }
         }
+        // --- MODIFICATION END ---
 
         public bool IsTileEmpty(int x, int y)
         {
@@ -58,15 +60,10 @@ namespace BombermanBackend.Models
             }
 
             TileType targetTile = Map[newX, newY];
-
-            // --- MODIFICATION START ---
-            // Player can only move onto Empty or existing Bomb tiles
             bool isTargetTraversable = (targetTile == TileType.Empty || targetTile == TileType.Bomb);
-            // --- MODIFICATION END ---
 
             if (!isTargetTraversable)
             {
-                // Blocked by Wall, DestructibleWall, Player, etc.
                 return false;
             }
 
@@ -74,7 +71,6 @@ namespace BombermanBackend.Models
             int oldX = player.X;
             int oldY = player.Y;
 
-            // Only clear the old tile if the player was the only thing there
             if (Map[oldX, oldY] == TileType.Player)
             {
                 Map[oldX, oldY] = TileType.Empty;
@@ -83,7 +79,6 @@ namespace BombermanBackend.Models
             player.X = newX;
             player.Y = newY;
 
-            // Place player on new tile
             Map[newX, newY] = TileType.Player;
 
             return true;

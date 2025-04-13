@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BombermanBackend\BombermanBackend.csproj" />
+    <Compile Include="..\BombermanBackend.Contracts\*.cs">
+    <Link>Contracts\%(FileName)%(Extension)</Link>
+  </Compile>     
   </ItemGroup>
 
 </Project>

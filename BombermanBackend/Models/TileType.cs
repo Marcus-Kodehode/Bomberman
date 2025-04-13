@@ -7,6 +7,9 @@ namespace BombermanBackend.Models
         Bomb,
         Player,
         DestructibleWall,
-        Explosion         // Represents the blast effect temporarily
+        Explosion,        // Temporary explosion effect
+        PowerUpBombCount, // Powerup: Increases MaxBombs
+        PowerUpBlastRadius // Powerup: Increases BlastRadius
+        // Future: PowerUpSpeed etc.
     }
 }

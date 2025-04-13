@@ -5,7 +5,9 @@ namespace BombermanBackend.Models
         public string Id { get; set; } = string.Empty;
         public int X { get; set; }
         public int Y { get; set; }
-        public int MaxBombs { get; set; } = 1; // Player starts with a limit of 1 bomb
-        public int ActiveBombsCount { get; set; } = 0; // How many bombs they currently have placed
+        public int MaxBombs { get; set; } = 1;
+        public int ActiveBombsCount { get; set; } = 0;
+        public int BlastRadius { get; set; } = 1; // Default blast radius 1, moved from Bomb
+        // Future: Add Speed, CanKickBomb, etc.
     }
 }

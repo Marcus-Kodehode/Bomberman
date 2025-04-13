@@ -27,7 +27,9 @@ namespace BombermanBackend.Logic
                         TileType.Bomb => "B",
                         TileType.Player => "P",
                         TileType.DestructibleWall => "X",
-                        TileType.Explosion => "*", // Display explosion
+                        TileType.Explosion => "*",
+                        TileType.PowerUpBombCount => "+", // Display '+' for Bomb Count
+                        TileType.PowerUpBlastRadius => "F", // Display 'F' for Firepower/Blast Radius
                         _ => "."
                     });
                 }

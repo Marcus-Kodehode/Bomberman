@@ -16,9 +16,14 @@ namespace BombermanBackend.Logic
         public bool PlaceBomb(string playerId, int x, int y)
         {
             if (!_session.Players.TryGetValue(playerId, out Player? player)) return false;
+            // --- FIX: Allow placing bomb only if player is ON the target tile ---
             if (player.X != x || player.Y != y) return false;
+            // --- END FIX ---
             if (player.ActiveBombsCount >= player.MaxBombs) return false;
+
+            // --- FIX: Pass player's CURRENT blast radius to the bomb constructor ---
             _session.AddBomb(playerId, x, y, player.BlastRadius);
+            // --- END FIX ---
             player.ActiveBombsCount++;
             return true;
         }
@@ -26,12 +31,12 @@ namespace BombermanBackend.Logic
         public void Tick()
         {
             CleanupExplosions(); // Clean up explosions from previous tick first
-            UpdateBombs(); // Then update and detonate bombs
+            UpdateBombs();       // Then update and detonate bombs
         }
 
+        // Set explosion tiles back to empty
         private void CleanupExplosions()
         {
-            Console.WriteLine("DEBUG: --- CleanupExplosions() ---");
             int width = _session.Map.GetLength(0);
             int height = _session.Map.GetLength(1);
             for (int x = 0; x < width; x++)
@@ -40,175 +45,178 @@ namespace BombermanBackend.Logic
                 {
                     if (_session.Map[x, y] == TileType.Explosion)
                     {
-                        Console.WriteLine($" DEBUG: Cleaning up explosion at ({x},{y})");
                         _session.Map[x, y] = TileType.Empty;
                     }
                 }
             }
-            Console.WriteLine("DEBUG: --- CleanupExplosions() Complete ---");
         }
+
 
         private void UpdateBombs()
         {
-            Console.WriteLine("DEBUG: --- UpdateBombs() ---");
-            // Decrement fuse timers
+            // 1. Decrement fuse timers for all bombs
             foreach (var bomb in _session.Bombs)
             {
                 bomb.RemainingFuseTicks--;
-                Console.WriteLine($" DEBUG: Bomb at ({bomb.X}, {bomb.Y}) fuse: {bomb.RemainingFuseTicks}");
             }
 
-            // Collect bombs that are ready to detonate
+            // 2. Collect bombs that are ready to detonate (fuse <= 0)
             List<Bomb> bombsToDetonate = _session.Bombs.Where(b => b.RemainingFuseTicks <= 0).ToList();
 
             if (!bombsToDetonate.Any())
             {
-                Console.WriteLine(" DEBUG: No bombs to detonate.");
-                Console.WriteLine("DEBUG: --- UpdateBombs() Complete ---");
                 return; // No bombs to detonate this tick
             }
 
+            // 3. Handle Detonations & Chain Reactions
+            // Use a queue for BFS-like chain reaction handling
+            // Use a set to track bombs already detonated in this tick to prevent infinite loops
             Queue<Bomb> detonationQueue = new Queue<Bomb>(bombsToDetonate);
-            HashSet<Bomb> detonatedBombs = new HashSet<Bomb>();
-            List<string> ownerIdsOfDetonatedBombs = new List<string>();
+            HashSet<Bomb> detonatedBombs = new HashSet<Bomb>(); // Track bombs already processed
+            List<string> ownerIdsOfDetonatedBombs = new List<string>(); // To decrement player counts later
+
 
             while (detonationQueue.Count > 0)
             {
                 var bomb = detonationQueue.Dequeue();
-                if (detonatedBombs.Add(bomb)) // Process each bomb only once
+
+                // Ensure we only process each bomb detonation once per tick
+                if (detonatedBombs.Add(bomb))
                 {
-                    ownerIdsOfDetonatedBombs.Add(bomb.OwnerId);
-                    DetonateBomb(bomb, detonationQueue, detonatedBombs);
+                    ownerIdsOfDetonatedBombs.Add(bomb.OwnerId); // Track owner for count adjustment
+                    DetonateBomb(bomb, detonationQueue, detonatedBombs); // Handles explosion tiles & chain reactions
                 }
-                Console.WriteLine($" DEBUG: DetonationQueue count: {detonationQueue.Count}, detonatedBombs count: {detonatedBombs.Count}");
             }
 
-            // Adjust player active bomb counts
-            var ownerCounts = ownerIdsOfDetonatedBombs.GroupBy(id => id).Select(g => new { OwnerId = g.Key, Count = g.Count() });
+            // 4. Adjust player active bomb counts
+            // Group by owner ID to correctly decrement counts even if multiple bombs explode
+            var ownerCounts = ownerIdsOfDetonatedBombs.GroupBy(id => id)
+                                                    .Select(g => new { OwnerId = g.Key, Count = g.Count() });
+
             foreach (var ownerInfo in ownerCounts)
             {
                 if (_session.Players.TryGetValue(ownerInfo.OwnerId, out Player? owner))
                 {
                     owner.ActiveBombsCount = Math.Max(0, owner.ActiveBombsCount - ownerInfo.Count);
-                    Console.WriteLine($" DEBUG: Player {owner.Id} ActiveBombsCount adjusted to {owner.ActiveBombsCount}");
                 }
             }
 
-            // Remove detonated bombs from the session
+            // 5. Remove the detonated bombs from the main session list
             _session.Bombs.RemoveAll(b => detonatedBombs.Contains(b));
-            Console.WriteLine($" DEBUG: Bombs remaining after detonation: {_session.Bombs.Count}");
 
-            // Note: No CleanupExplosions() call here - explosions will persist until next tick
-            Console.WriteLine("DEBUG: --- UpdateBombs() Complete ---");
+            // Note: We don't call CleanupExplosions() here. Explosions persist for one tick
+            // and are cleaned at the *start* of the next tick.
         }
 
+
+        // Handles the explosion effect of a single bomb
         private void DetonateBomb(Bomb bomb, Queue<Bomb> detonationQueue, HashSet<Bomb> detonatedBombs)
         {
-            Console.WriteLine($" DEBUG: Detonating bomb at ({bomb.X},{bomb.Y})");
+            // Use a set to efficiently track all tiles affected by *this specific* bomb's explosion
             HashSet<(int, int)> affectedTiles = new HashSet<(int, int)>();
+
+            // The bomb's own location is always affected
             affectedTiles.Add((bomb.X, bomb.Y));
-            
-            // Set the bomb's own tile to explosion immediately
-            _session.Map[bomb.X, bomb.Y] = TileType.Explosion;
 
-            int[] dx = { 0, 0, 1, -1 };
-            int[] dy = { 1, -1, 0, 0 };
+            // Directions (Right, Left, Down, Up)
+            int[] dx = { 1, -1, 0, 0 };
+            int[] dy = { 0, 0, 1, -1 };
 
-            for (int i = 0; i < 4; i++)
+            // Calculate explosion path in each of the 4 directions
+            for (int i = 0; i < 4; i++) // Loop through directions
             {
-                for (int j = 1; j <= bomb.BlastRadius; j++)
+                for (int j = 1; j <= bomb.BlastRadius; j++) // Loop through radius steps
                 {
-                    int x = bomb.X + dx[i] * j;
-                    int y = bomb.Y + dy[i] * j;
+                    int currentX = bomb.X + dx[i] * j;
+                    int currentY = bomb.Y + dy[i] * j;
 
-                    if (x < 0 || x >= _session.Map.GetLength(0) || y < 0 || y >= _session.Map.GetLength(1))
+                    // Check bounds
+                    if (currentX < 0 || currentX >= _session.Map.GetLength(0) || currentY < 0 || currentY >= _session.Map.GetLength(1))
                     {
-                        Console.WriteLine($" DEBUG: Explosion out of bounds at ({x},{y})");
-                        break; // Stop going out of bounds
+                        break; // Stop propagation if out of bounds
                     }
 
-                    affectedTiles.Add((x, y));
+                    affectedTiles.Add((currentX, currentY)); // Mark tile as affected
 
-                    TileType tile = _session.Map[x, y];
-                    Console.WriteLine($"  DEBUG: Detonating bomb at ({bomb.X},{bomb.Y}). Checking ({x},{y}). Tile: {tile}");
+                    TileType tile = _session.Map[currentX, currentY];
 
+                    // Stop propagation if it hits an indestructible wall
                     if (tile == TileType.Wall)
                     {
-                        Console.WriteLine($"  DEBUG: Explosion stopped by Wall at ({x},{y})");
-                        break; // Wall blocks further explosion
+                        break;
                     }
 
+                    // If it hits a destructible wall, stop propagation (wall absorbs blast)
                     if (tile == TileType.DestructibleWall)
                     {
-                        _session.Map[x, y] = TileType.Explosion;
-                        Console.WriteLine($"  DEBUG: Set ({x},{y}) to Explosion (DestructibleWall).");
-                        break; // Destructible wall is destroyed, explosion stops
+                        // Note: Wall turns into explosion, handled later
+                        break;
                     }
 
+                    // If it hits another bomb, trigger a chain reaction
                     if (tile == TileType.Bomb)
                     {
-                        // Trigger chain reaction (if not already detonating)
-                        var bombToChain = _session.Bombs.FirstOrDefault(b => b.X == x && b.Y == y && !detonatedBombs.Contains(b));
-                        if (bombToChain != null)
+                        // Find the bomb object at this location
+                        var bombToChain = _session.Bombs.FirstOrDefault(b => b.X == currentX && b.Y == currentY);
+
+                        // Add to queue ONLY if it exists and hasn't already been processed this tick
+                        if (bombToChain != null && !detonatedBombs.Contains(bombToChain) && !detonationQueue.Contains(bombToChain))
                         {
                             detonationQueue.Enqueue(bombToChain);
-                            detonatedBombs.Add(bombToChain);
-                            Console.WriteLine($"  DEBUG: Bomb at ({x},{y}) added to detonationQueue due to chain reaction.");
                         }
-                        _session.Map[x, y] = TileType.Explosion; // Convert bomb tile to explosion
-                        break; // Bomb hit, explosion stops
+                        // Note: Bomb tile turns into explosion, handled later
+                        break; // Explosion stops propagation here too
                     }
 
-                    _session.Map[x, y] = TileType.Explosion;
-                    Console.WriteLine($"  DEBUG: Set ({x},{y}) to Explosion.");
-                }
-            }
-
-            // STEP 1: First set all affected tiles to explosions
-            Console.WriteLine($"  DEBUG: Setting all {affectedTiles.Count} affected tiles to explosions");
-            foreach (var (x, y) in affectedTiles)
-            {
-                _session.Map[x, y] = TileType.Explosion;
-                Console.WriteLine($"  DEBUG: Set ({x},{y}) to Explosion");
-            }
-
-            // STEP 2: Handle player hits
-            Console.WriteLine($"  DEBUG: Players before hit check: {_session.Players.Count}");
-            
-            // Debug log all player positions for better diagnostics
-            Console.WriteLine("  DEBUG: Current player positions:");
-            foreach (var player in _session.Players.Values)
-            {
-                Console.WriteLine($"  DEBUG: Player {player.Id} is at position ({player.X},{player.Y})");
-            }
-            
-            // Use a separate list to track hit players to avoid collection modification issues
-            List<Player> playersToRemove = new List<Player>();
-            
-            // Check each affected tile for players
-            foreach (var (x, y) in affectedTiles)
-            {
-                // Find any players at this position
-                foreach (var player in _session.Players.Values)
-                {
-                    if (player.X == x && player.Y == y && !playersToRemove.Contains(player))
+                    // --- FIX: Prevent explosion propagation through existing explosion tiles ---
+                    // --- This prevents re-adding players who might have been removed by a prior chain reaction explosion ---
+                    if (tile == TileType.Explosion)
                     {
-                        Console.WriteLine($"  DEBUG: Player {player.Id} found at explosion coordinates ({x},{y}), adding to removal list");
-                        playersToRemove.Add(player);
+                        break; // Stop if we hit an existing explosion tile from this tick's chain
+                    }
+                    // --- END FIX ---
+                }
+            }
+
+            // --- Centralized Handling of Affected Tiles ---
+
+            // 1. Handle Player Hits FIRST (before changing tiles)
+            List<string> playersHitIds = new List<string>();
+            foreach (var (x, y) in affectedTiles)
+            {
+                // Find players currently at this tile
+                var playersAtTile = _session.Players.Values.Where(p => p.X == x && p.Y == y).ToList();
+                foreach (var player in playersAtTile)
+                {
+                    if (!playersHitIds.Contains(player.Id)) // Ensure player is only added once
+                    {
+                        playersHitIds.Add(player.Id);
                     }
                 }
             }
-            
-            // Now remove all hit players in a separate step to avoid collection modification issues
-            Console.WriteLine($"  DEBUG: Found {playersToRemove.Count} players to remove");
-            foreach (var player in playersToRemove)
+            // Remove hit players from the game session
+            foreach (string playerId in playersHitIds)
             {
-                bool removed = _session.Players.Remove(player.Id);
-                Console.WriteLine($"  DEBUG: Player {player.Id} hit by explosion at ({player.X},{player.Y})! Removed: {removed}");
+                _session.Players.Remove(playerId);
+                // Optional: Log player removal
+                // Console.WriteLine($"--- Player {playerId} removed by explosion ---");
             }
-            
-            Console.WriteLine($"  DEBUG: Players after hit check: {_session.Players.Count}, Players hit: {playersToRemove.Count}");
-            Console.WriteLine($"  DEBUG: Detonated bombs count: {detonatedBombs.Count}");
+
+
+            // 2. Set all affected tiles to Explosion state
+            // This overwrites Empty, DestructibleWall, collected PowerUps, and potentially chained Bombs
+            foreach (var (x, y) in affectedTiles)
+            {
+                // Check bounds again just in case, though should be correct from propagation logic
+                if (x >= 0 && x < _session.Map.GetLength(0) && y >= 0 && y < _session.Map.GetLength(1))
+                {
+                    // Don't overwrite indestructible walls
+                    if (_session.Map[x, y] != TileType.Wall)
+                    {
+                        _session.Map[x, y] = TileType.Explosion;
+                    }
+                }
+            }
         }
     }
 }

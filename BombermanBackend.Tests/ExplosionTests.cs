@@ -8,23 +8,30 @@ namespace BombermanBackend.Tests
 {
     public class ExplosionTests
     {
-        // Removed class fields and constructor/SetupTest
-
         // Helper remains for convenience
         private void AdvanceTicks(GameManager manager, int ticks)
         {
             for (int i = 0; i < ticks; i++) { manager.Tick(); }
         }
 
-        // Helper to place bomb at standard test location (3,3)
-        private Bomb PlaceBombAtCenter(GameManager manager, GameSession session, Player player)
+        // Helper for multi-step cardinal move (Example: Can add error handling)
+        private bool MovePlayerTo(GameManager manager, Player player, int targetX, int targetY)
         {
-            bool moved = manager.MovePlayer(player.Id, 3, 3); // Ensure player is at center
-            Assert.True(moved, "Setup: Could not move player to center");
-            bool placed = manager.PlaceBomb(player.Id, 3, 3);
-            Assert.True(placed, "Setup: Failed to place bomb at center (3,3)");
-            return session.Bombs.First(b => b.X == 3 && b.Y == 3);
+            // Simple pathing for testing - assumes clear path or tests wall collision
+            while (player.X != targetX)
+            {
+                int dx = Math.Sign(targetX - player.X);
+                if (!manager.MovePlayer(player.Id, player.X + dx, player.Y)) return false; // Failed move
+            }
+            while (player.Y != targetY)
+            {
+                int dy = Math.Sign(targetY - player.Y);
+                if (!manager.MovePlayer(player.Id, player.X, player.Y + dy)) return false; // Failed move
+            }
+            return (player.X == targetX && player.Y == targetY);
         }
+
+        // Removed PlaceBombAtCenter helper
 
         [Fact]
         public void Explosion_Clears_Center_Tile()
@@ -32,14 +39,17 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 }; // Start anywhere, will move
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 }; // Start at center
             session.AddPlayer(p1);
 
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Place bomb at (3,3)
+            // Place bomb directly
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3);
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
 
             // Act
-            AdvanceTicks(manager, fuse);
+            AdvanceTicks(manager, fuse); // Detonate
             AdvanceTicks(manager, 1); // Cleanup
 
             // Assert
@@ -52,12 +62,17 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 };
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 };
             session.AddPlayer(p1);
 
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Place bomb at (3,3)
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3);
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
             var adjacentCoords = new[] { (3, 2), (3, 4), (2, 3), (4, 3) };
+
+            // Ensure adjacent are empty before
+            foreach (var (x, y) in adjacentCoords) Assert.Equal(TileType.Empty, session.Map[x, y]);
 
             // Act
             AdvanceTicks(manager, fuse);
@@ -74,13 +89,14 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 };
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 }; // Start at center
             session.AddPlayer(p1);
+            session.Map[4, 3] = TileType.Wall;    // Wall right of bomb
+            session.Map[5, 3] = TileType.Empty;   // Empty beyond wall
 
-            session.Map[4, 3] = TileType.Wall; // Wall to the right of (3,3)
-            session.Map[5, 3] = TileType.Empty; // Empty tile beyond the wall
-
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Place bomb at (3,3)
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3);
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
 
             // Act
@@ -90,6 +106,7 @@ namespace BombermanBackend.Tests
             // Assert
             Assert.Equal(TileType.Wall, session.Map[4, 3]);
             Assert.Equal(TileType.Empty, session.Map[5, 3]);
+            Assert.Equal(TileType.Empty, session.Map[2, 3]); // Left should be clear
         }
 
         [Fact]
@@ -98,13 +115,14 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 };
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 }; // Start center
             session.AddPlayer(p1);
+            session.Map[4, 3] = TileType.DestructibleWall; // Destructible right
+            session.Map[5, 3] = TileType.Empty;            // Empty beyond
 
-            session.Map[4, 3] = TileType.DestructibleWall; // Destructible wall to the right
-            session.Map[5, 3] = TileType.Empty; // Empty tile beyond
-
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Place bomb at (3,3)
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3);
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
 
             // Act
@@ -113,15 +131,15 @@ namespace BombermanBackend.Tests
 
             manager.Tick(); // Detonation tick
 
-            // Assert middle state
-            Assert.Equal(TileType.Explosion, session.Map[4, 3]); // Is explosion tile now
-            Assert.Equal(TileType.Empty, session.Map[5, 3]); // Beyond is untouched
+            // Assert intermediate state
+            Assert.Equal(TileType.Explosion, session.Map[4, 3]);
+            Assert.Equal(TileType.Empty, session.Map[5, 3]);
 
             AdvanceTicks(manager, 1); // Cleanup tick
 
             // Assert final state
-            Assert.Equal(TileType.Empty, session.Map[4, 3]); // Is now empty
-            Assert.Equal(TileType.Empty, session.Map[5, 3]); // Beyond remains empty
+            Assert.Equal(TileType.Empty, session.Map[4, 3]);
+            Assert.Equal(TileType.Empty, session.Map[5, 3]);
         }
 
         [Fact]
@@ -130,17 +148,19 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 }; // Bomber
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 }; // Bomber starts at center
             session.AddPlayer(p1);
-            Player p2 = new Player { Id = "p2", X = 4, Y = 3 }; // Target player
+            Player p2 = new Player { Id = "p2", X = 4, Y = 3 }; // Target player right
             session.AddPlayer(p2);
             Assert.Contains(p2.Id, session.Players.Keys);
 
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Bomb at (3,3)
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3); // Bomb at (3,3)
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
 
-            // Move bomber P1 out of the way before detonation
-            bool moved = manager.MovePlayer(p1.Id, 1, 1);
+            // Move bomber P1 out of the way using cardinal moves
+            bool moved = MovePlayerTo(manager, p1, 1, 1);
             Assert.True(moved, "Failed to move P1 away before detonation");
 
             // Act
@@ -148,7 +168,7 @@ namespace BombermanBackend.Tests
 
             // Assert
             Assert.False(session.Players.ContainsKey("p2")); // p2 removed
-            Assert.True(session.Players.ContainsKey("p1")); // p1 (bomber) should survive
+            Assert.True(session.Players.ContainsKey("p1"));  // p1 survived
             Assert.Equal(TileType.Explosion, session.Map[4, 3]); // Tile shows explosion
 
             AdvanceTicks(manager, 1); // Cleanup
@@ -161,14 +181,14 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1, MaxBombs = 2 }; // Start safe, allow 2 bombs
+            var p1 = new Player { Id = "p1", X = 1, Y = 1, MaxBombs = 2 }; // Start safe
             session.AddPlayer(p1);
 
-            // Manually place bombs to control fuse/position
+            // Manually place bombs to control fuse/position precisely
             int bombAX = 3, bombAY = 3;
             int bombBX = 4, bombBY = 3;
-            Bomb bombA = new Bomb(p1.Id, bombAX, bombAY, 3, 1); // Short fuse
-            Bomb bombB = new Bomb(p1.Id, bombBX, bombBY, 5, 1); // Longer fuse
+            Bomb bombA = new Bomb(p1.Id, bombAX, bombAY, 1, 3); // Radius 1, Fuse 3
+            Bomb bombB = new Bomb(p1.Id, bombBX, bombBY, 1, 5); // Radius 1, Fuse 5
             session.Bombs.Add(bombA); session.Map[bombAX, bombAY] = TileType.Bomb;
             session.Bombs.Add(bombB); session.Map[bombBX, bombBY] = TileType.Bomb;
             p1.ActiveBombsCount = 2; // Manually set count
@@ -176,20 +196,27 @@ namespace BombermanBackend.Tests
             // Act
             AdvanceTicks(manager, 3); // Detonates Bomb A, hits B, B detonates in same tick
 
-            // Assert
+            // Assert - Check explosion tiles immediately after detonation tick
             Assert.Empty(session.Bombs);
-            Assert.Equal(TileType.Explosion, session.Map[2, 3]);
-            Assert.Equal(TileType.Explosion, session.Map[3, 3]);
-            Assert.Equal(TileType.Explosion, session.Map[4, 3]);
-            Assert.Equal(TileType.Explosion, session.Map[5, 3]);
+            Assert.Equal(TileType.Explosion, session.Map[2, 3]); // A left
+            Assert.Equal(TileType.Explosion, session.Map[3, 3]); // A center
+            Assert.Equal(TileType.Explosion, session.Map[4, 3]); // B center / A right
+            Assert.Equal(TileType.Explosion, session.Map[5, 3]); // B right
+            // Check other tiles affected by B
+            Assert.Equal(TileType.Explosion, session.Map[4, 2]); // B up (assuming not wall)
+            Assert.Equal(TileType.Explosion, session.Map[4, 4]); // B down (assuming not wall & clear)
+
             Assert.Equal(0, p1.ActiveBombsCount); // Count decremented twice
 
             AdvanceTicks(manager, 1); // Cleanup tick
 
+            // Assert final empty state
             Assert.Equal(TileType.Empty, session.Map[2, 3]);
             Assert.Equal(TileType.Empty, session.Map[3, 3]);
             Assert.Equal(TileType.Empty, session.Map[4, 3]);
             Assert.Equal(TileType.Empty, session.Map[5, 3]);
+            Assert.Equal(TileType.Empty, session.Map[4, 2]);
+            Assert.Equal(TileType.Empty, session.Map[4, 4]);
         }
 
         [Fact]
@@ -198,11 +225,14 @@ namespace BombermanBackend.Tests
             // Arrange
             var session = new GameSession(7, 7);
             var manager = new GameManager(session);
-            var p1 = new Player { Id = "p1", X = 1, Y = 1 };
+            var p1 = new Player { Id = "p1", X = 3, Y = 3 }; // Start center
             session.AddPlayer(p1);
 
-            var bomb = PlaceBombAtCenter(manager, session, p1); // Bomb at (3,3)
+            bool placed = manager.PlaceBomb(p1.Id, 3, 3);
+            Assert.True(placed);
+            var bomb = session.Bombs.First();
             int fuse = bomb.RemainingFuseTicks;
+            // Expected affected tiles (radius 1 from 3,3)
             var affectedCoords = new[] { (3, 3), (3, 2), (3, 4), (2, 3), (4, 3) };
 
             // Act

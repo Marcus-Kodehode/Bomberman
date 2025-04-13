@@ -75,6 +75,7 @@ namespace BombermanBackend.Logic
             while (detonationQueue.Count > 0)
             {
                 var bombToDetonate = detonationQueue.Dequeue();
+                // Pass the queue and set to handle potential chain reactions
                 DetonateBomb(bombToDetonate, detonationQueue, processedBombs);
             }
         }
@@ -82,7 +83,7 @@ namespace BombermanBackend.Logic
         // Handles the actual explosion logic
         private void DetonateBomb(Bomb bomb, Queue<Bomb> detonationQueue, HashSet<Bomb> processedBombs)
         {
-            // Decrement owner's active bomb count
+            // Ensure owner's count is decremented
             if (_session.Players.TryGetValue(bomb.OwnerId, out Player? owner))
             {
                 if (owner.ActiveBombsCount > 0) owner.ActiveBombsCount--;
@@ -137,7 +138,6 @@ namespace BombermanBackend.Logic
                 {
                     Console.WriteLine($"--- Player {playerOnTile.Id} hit by explosion at ({x},{y})! ---");
                     playersToRemove.Add(playerOnTile);
-                    // Player state will be set to Explosion below
                 }
 
                 // Check for other bombs for chain reaction
@@ -145,13 +145,12 @@ namespace BombermanBackend.Logic
                 if (bombOnTile != null)
                 {
                     // Add to detonation queue if not already processed/queued this tick
-                    if (processedBombs.Add(bombOnTile))
+                    if (processedBombs.Add(bombOnTile)) // Add returns true if newly added
                     {
                         Console.WriteLine($"--- Chain reaction: Bomb at ({x},{y}) triggered! ---");
                         _session.Bombs.Remove(bombOnTile); // Remove from active list now
-                        detonationQueue.Enqueue(bombOnTile); // Add to queue for detonation later in this same Tick()
+                        detonationQueue.Enqueue(bombOnTile); // Add to queue for detonation this tick
                     }
-                    // Bomb state will be set to Explosion below
                 }
 
                 // Set tile to Explosion, unless it's an indestructible Wall

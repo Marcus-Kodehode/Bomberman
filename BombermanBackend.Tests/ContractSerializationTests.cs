@@ -1,7 +1,6 @@
-// --- File: BombermanBackend.Tests/ContractSerializationTests.cs ---
 using Xunit;
-using BombermanBackend.Contracts; // Your namespace for DTOs
-using System.Text.Json; // Using System.Text.Json for example
+using BombermanBackend.Contracts;
+using System.Text.Json;
 using System.Collections.Generic;
 
 namespace BombermanBackend.Tests

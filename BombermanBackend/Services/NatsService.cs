@@ -86,18 +86,20 @@ namespace BombermanBackend.Services
             }
         }
 
-        // --- NATS Connection Event Handlers ---
         private ValueTask HandleNatsDisconnect(object? sender, NatsEventArgs args)
         {
-            _logger.LogWarning("NATS connection DISCONNECTED. Error: {Error}", args.Error);
-            // Potentially implement logic to pause game processing or notify admins
+            // NatsEventArgs doesn't directly expose the Exception here.
+            // Log the disconnect event happened. More detail might require Opts.DisconnectedEventHandler.
+            _logger.LogWarning("NATS connection DISCONNECTED.");
             return ValueTask.CompletedTask;
         }
-
         private ValueTask HandleNatsReconnect(object? sender, NatsEventArgs args)
         {
-            _logger.LogInformation("NATS connection RECONNECTED to {Url}.", args.Connection.ServerInfo?.ServerUrl);
-            // Potentially resume processing or resubscribe if needed
+            var connection = sender as INatsConnection;
+            // Use Host and Port from ServerInfo
+            string serverHost = connection?.ServerInfo?.Host ?? "Unknown";
+            int serverPort = connection?.ServerInfo?.Port ?? 0;
+            _logger.LogInformation("NATS connection RECONNECTED to {Host}:{Port}.", serverHost, serverPort);
             return ValueTask.CompletedTask;
         }
 

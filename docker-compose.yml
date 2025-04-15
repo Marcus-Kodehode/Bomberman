@@ -1,10 +1,20 @@
-# Please refer https://aka.ms/HTTPSinContainer on how to setup an https developer certificate for your ASP.NET Core service.
-
+# Mono Repo/docker-compose.yml
 services:
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    # command: "-js"
+
   bombermanbackend:
     image: bombermanbackend
     build:
       context: .
-      dockerfile: BombermanBackend/Dockerfile
-    ports:
-      - 5000:5000
+      dockerfile: Dockerfile # <-- CHANGED: Now directly in context root
+    environment:
+      - NATS_URL=nats://nats:4222
+      # - ASPNETCORE_ENVIRONMENT=Production
+    depends_on:
+      - nats

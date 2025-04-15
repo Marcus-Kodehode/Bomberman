@@ -1,16 +1,21 @@
-# Please refer https://aka.ms/HTTPSinContainer on how to setup an https developer certificate for your ASP.NET Core service.
-
+# Mono Repo/docker-compose.debug.yml
 services:
   bombermanbackend:
-    image: bombermanbackend
+    image: bombermanbackend-debug
     build:
       context: .
-      dockerfile: BombermanBackend/Dockerfile
+      dockerfile: Dockerfile # <-- CHANGED: Now directly in context root
       args:
         - configuration=Debug
     ports:
-      - 5000:5000
+      - "5000:5000"
     environment:
+      - NATS_URL=nats://nats:4222
       - ASPNETCORE_ENVIRONMENT=Development
     volumes:
-      - ~/.vsdbg:c:\remote_debugger:rw
+      # Adjust volume paths if needed, they are relative to compose file
+      - ./BombermanBackend:/source/BombermanBackend:rw
+      - ./BombermanBackend.Contracts:/source/BombermanBackend.Contracts:rw
+      - ~/.vsdbg:/remote_debugger:rw
+    depends_on:
+      - nats

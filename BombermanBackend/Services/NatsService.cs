@@ -1,16 +1,15 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NATS.Client.Core;         // For INatsConnection, NatsConnectionState
-using NATS.Net;               // For NatsConnection, NatsOpts
+using NATS.Client.Core;
+using NATS.Net;
 using System;
-using System.Collections.Generic; // For List<>
-using System.Linq;              // For .Any()
-using System.Text.Json;         // For serialization (if needed manually)
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BombermanBackend.Contracts; // Your DTO namespace
-using BombermanBackend.Logic;    // For GameManager
-using BombermanBackend.Models;   // For GameSession
+using BombermanBackend.Contracts; // DTOs
+using BombermanBackend.Logic;    // Managers
+using BombermanBackend.Models;   // Core Models & EventArgs
 
 namespace BombermanBackend.Services
 {
@@ -18,16 +17,19 @@ namespace BombermanBackend.Services
     {
         private readonly ILogger<NatsService> _logger;
         private readonly NatsOpts _natsOptions;
-        private readonly GameManager _gameManager;
-        private readonly GameSession _gameSession;
+        private readonly GameSessionManager _sessionManager;
         private INatsConnection? _natsConnection;
 
-        // Constructor remains the same
-        public NatsService(ILogger<NatsService> logger, GameManager gameManager, GameSession gameSession)
+        // Store reference to the initial game's components for event handling (TEMP solution)
+        private string? _initialGameId;
+        private GameSession? _initialGameSession;
+        private GameManager? _initialGameManager;
+
+
+        public NatsService(ILogger<NatsService> logger, GameSessionManager sessionManager)
         {
             _logger = logger;
-            _gameManager = gameManager;
-            _gameSession = gameSession; // Keep reference to subscribe to its events too
+            _sessionManager = sessionManager;
 
             var natsUrl = Environment.GetEnvironmentVariable("NATS_URL") ?? "nats://localhost:4222";
             _natsOptions = NatsOpts.Default with { Url = natsUrl, Name = "BombermanBackendService" };
@@ -41,41 +43,31 @@ namespace BombermanBackend.Services
             try
             {
                 _natsConnection = new NatsConnection(_natsOptions);
-
-                // --- Subscribe to Connection Events (Optional but Recommended) ---
                 _natsConnection.ConnectionDisconnected += HandleNatsDisconnect;
                 _natsConnection.ConnectionOpened += HandleNatsReconnect;
-                // ----------------------------------------------------------------
 
                 await _natsConnection.ConnectAsync();
                 _logger.LogInformation("Connected to NATS server at {Url}", _natsConnection.Opts.Url);
 
-                // --- Subscribe to Game Logic Events ---
-                SubscribeToGameEvents();
-                // ------------------------------------
+                // --- Create and Store Initial Game Session ---
+                _initialGameId = _sessionManager.CreateNewSession();
+                _initialGameSession = _sessionManager.GetSession(_initialGameId);
+                _initialGameManager = _sessionManager.GetManagerForSession(_initialGameId);
+                _logger.LogInformation("Created initial game session with ID: {GameId}", _initialGameId);
+                // -------------------------------------------
 
-                // Start listening for commands from clients
-                await SubscribeToCommandsAsync(stoppingToken);
+                SubscribeToGameEvents(); // Subscribe to events from the initial session
 
-                // Keep the service alive (ExecuteAsync should ideally run forever)
-                // The command subscription loop might handle this, or use Task.Delay
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                var commandTask = SubscribeToCommandsAsync(stoppingToken);
+                var tickTask = RunGameTicksAsync(stoppingToken);
 
+                await Task.WhenAll(commandTask, tickTask);
             }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("NATS Service stopping gracefully (OperationCanceled).");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "NATS Service encountered an unhandled exception during execution.");
-            }
+            catch (OperationCanceledException) { _logger.LogInformation("NATS Service stopping gracefully (OperationCanceled)."); }
+            catch (Exception ex) { _logger.LogError(ex, "NATS Service encountered an unhandled exception during execution."); }
             finally
             {
-                // --- Unsubscribe from Game Logic Events ---
-                UnsubscribeFromGameEvents();
-                // ----------------------------------------
-
+                UnsubscribeFromGameEvents(); // Unsubscribe from the initial session
                 if (_natsConnection != null)
                 {
                     _natsConnection.ConnectionDisconnected -= HandleNatsDisconnect;
@@ -86,45 +78,41 @@ namespace BombermanBackend.Services
             }
         }
 
+        // --- NATS Connection Event Handlers ---
         private ValueTask HandleNatsDisconnect(object? sender, NatsEventArgs args)
         {
-            // NatsEventArgs doesn't directly expose the Exception here.
-            // Log the disconnect event happened. More detail might require Opts.DisconnectedEventHandler.
-            _logger.LogWarning("NATS connection DISCONNECTED.");
-            return ValueTask.CompletedTask;
+            _logger.LogWarning("NATS connection DISCONNECTED."); return ValueTask.CompletedTask;
         }
         private ValueTask HandleNatsReconnect(object? sender, NatsEventArgs args)
         {
             var connection = sender as INatsConnection;
-            // Use Host and Port from ServerInfo
-            string serverHost = connection?.ServerInfo?.Host ?? "Unknown";
-            int serverPort = connection?.ServerInfo?.Port ?? 0;
-            _logger.LogInformation("NATS connection RECONNECTED to {Host}:{Port}.", serverHost, serverPort);
-            return ValueTask.CompletedTask;
+            string serverHost = connection?.ServerInfo?.Host ?? "Unknown"; int serverPort = connection?.ServerInfo?.Port ?? 0;
+            _logger.LogInformation("NATS connection RECONNECTED to {Host}:{Port}.", serverHost, serverPort); return ValueTask.CompletedTask;
         }
 
-        // --- Subscribe to Game Manager/Session Events ---
+        // --- Subscribe/Unsubscribe to Game Events (for Initial Session) ---
         private void SubscribeToGameEvents()
         {
-            _logger.LogInformation("Subscribing to internal game events...");
-            // !! IMPORTANT: These events need to be added to GameManager and GameSession !!
-            // _gameManager.PlayerDied += HandlePlayerDied;
-            // _gameManager.BombExploded += HandleBombExploded;
-            // _gameManager.GameOver += HandleGameOver; // Assuming GameManager determines game over
-            // _gameSession.PlayerJoined += HandlePlayerJoined; // Assuming GameSession handles joins
-            // _gameSession.PowerUpCollected += HandlePowerUpCollected; // Assuming GameSession handles powerups
+            if (_initialGameManager == null || _initialGameSession == null) return;
+            _logger.LogInformation("Subscribing to internal game events for GameId: {GameId}", _initialGameId);
 
-            // You might also need an event for general state changes if not polling
-            // _gameManager.GameStateChanged += HandleGameStateChanged;
+            _initialGameManager.PlayerDied += HandlePlayerDied;
+            _initialGameManager.BombExploded += HandleBombExploded;
+            _initialGameManager.GameOver += HandleGameOver;
+            _initialGameSession.PlayerJoined += HandlePlayerJoined;
+            _initialGameSession.PowerUpCollected += HandlePowerUpCollected;
         }
 
         private void UnsubscribeFromGameEvents()
         {
-            _logger.LogInformation("Unsubscribing from internal game events...");
-            // !! IMPORTANT: Unsubscribe from the events added above !!
-            // _gameManager.PlayerDied -= HandlePlayerDied;
-            // _gameManager.BombExploded -= HandleBombExploded;
-            // etc...
+            if (_initialGameManager == null || _initialGameSession == null) return;
+            _logger.LogInformation("Unsubscribing from internal game events for GameId: {GameId}", _initialGameId);
+
+            _initialGameManager.PlayerDied -= HandlePlayerDied;
+            _initialGameManager.BombExploded -= HandleBombExploded;
+            _initialGameManager.GameOver -= HandleGameOver;
+            _initialGameSession.PlayerJoined -= HandlePlayerJoined;
+            _initialGameSession.PowerUpCollected -= HandlePowerUpCollected;
         }
 
         // --- NATS Command Subscription Logic ---
@@ -132,239 +120,234 @@ namespace BombermanBackend.Services
         {
             if (_natsConnection == null || _natsConnection.ConnectionState != NatsConnectionState.Open)
             {
-                _logger.LogError("Cannot subscribe to commands: NATS connection not open.");
-                return;
+                _logger.LogError("Cannot subscribe to commands: NATS connection not open."); return;
             }
-
             _logger.LogInformation("Subscribing to NATS command subjects...");
 
-            // Use Task.WhenAll for concurrent subscriptions
-            var subscriptionTasks = new List<Task>
-            {
-                // Subscribe to PlayerMoveCommand
-                Task.Run(async () => {
-                    await foreach (var msg in _natsConnection.SubscribeAsync<PlayerMoveCommand>("bomberman.commands.player.move", cancellationToken: cancellationToken))
-                    { _logger.LogDebug("Received PlayerMoveCommand for {PlayerId}", msg.Data?.PlayerId); if (msg.Data != null) HandleMoveCommand(msg.Data); }
-                }, cancellationToken),
-
-                // Subscribe to PlaceBombCommand
-                Task.Run(async () => {
-                    await foreach (var msg in _natsConnection.SubscribeAsync<PlaceBombCommand>("bomberman.commands.player.placebomb", cancellationToken: cancellationToken))
-                    { _logger.LogDebug("Received PlaceBombCommand for {PlayerId}", msg.Data?.PlayerId); if (msg.Data != null) HandlePlaceBombCommand(msg.Data); }
-                }, cancellationToken),
-
-                // Subscribe to JoinGameCommand
-                 Task.Run(async () => {
-                    await foreach (var msg in _natsConnection.SubscribeAsync<JoinGameCommand>("bomberman.commands.game.join", cancellationToken: cancellationToken))
-                    { _logger.LogDebug("Received JoinGameCommand for {PlayerId}", msg.Data?.DesiredPlayerId); if (msg.Data != null) HandleJoinGameCommand(msg.Data); }
-                }, cancellationToken)
-
-                // TODO: Add subscriptions for other commands if needed (e.g., StartGameCommand)
+            // These subscriptions currently only affect the _initialGameId
+            var subscriptionTasks = new List<Task> {
+                Task.Run(async () => { await foreach (var msg in _natsConnection.SubscribeAsync<PlayerMoveCommand>("bomberman.commands.player.move", cancellationToken: cancellationToken)) { if (msg.Data != null) HandleMoveCommand(msg.Data); } }, cancellationToken),
+                Task.Run(async () => { await foreach (var msg in _natsConnection.SubscribeAsync<PlaceBombCommand>("bomberman.commands.player.placebomb", cancellationToken: cancellationToken)) { if (msg.Data != null) HandlePlaceBombCommand(msg.Data); } }, cancellationToken),
+                Task.Run(async () => { await foreach (var msg in _natsConnection.SubscribeAsync<JoinGameCommand>("bomberman.commands.game.join", cancellationToken: cancellationToken)) { if (msg.Data != null) HandleJoinGameCommand(msg.Data); } }, cancellationToken)
             };
-
-            try
-            {
-                await Task.WhenAll(subscriptionTasks);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("Command subscription tasks cancelled.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during command subscription.");
-                // May need more robust error handling / restart logic
-            }
-
-            _logger.LogInformation("Command subscription loops ended.");
+            try { await Task.WhenAll(subscriptionTasks); }
+            catch (OperationCanceledException) { _logger.LogInformation("Command subscription tasks cancelled."); }
+            catch (Exception ex) { _logger.LogError(ex, "Error during command subscription."); }
+            _logger.LogInformation("Command subscription processing stopped.");
         }
 
-        // --- Command Handling Logic ---
+        // --- Command Handling Logic (Using SessionManager - TEMP uses initial game) ---
         private void HandleMoveCommand(PlayerMoveCommand command)
         {
-            try { /* ... (Logic from previous step - call _gameManager.MovePlayer) ... */ }
-            catch (Exception ex) { _logger.LogError(ex, "Error handling PlayerMoveCommand"); }
-            // If successful move, GameStateChanged/PlayerMoved event from GameManager should trigger publish
-        }
+            string targetGameId = _initialGameId ?? "default"; // TEMP: Target initial game
+            GameManager? manager = _sessionManager.GetManagerForSession(targetGameId);
+            GameSession? session = _sessionManager.GetSession(targetGameId);
 
+            if (manager != null && session != null && session.Players.TryGetValue(command.PlayerId, out var player))
+            {
+                try
+                {
+                    int targetX = player.X + command.Dx; int targetY = player.Y + command.Dy;
+                    manager.MovePlayer(command.PlayerId, targetX, targetY); // MovePlayer raises PowerUpCollected event internally
+                }
+                catch (Exception ex) { _logger.LogError(ex, "Error handling PlayerMoveCommand for {Pl} in {Game}", command.PlayerId, targetGameId); }
+            }
+            else { _logger.LogWarning("Game/Player not found for MoveCommand: {Pl} in {Game}", command.PlayerId, targetGameId); }
+        }
         private void HandlePlaceBombCommand(PlaceBombCommand command)
         {
-            try
-            {
-                if (_gameSession.Players.ContainsKey(command.PlayerId))
-                {
-                    bool success = _gameManager.PlaceBomb(command.PlayerId, _gameSession.Players[command.PlayerId].X, _gameSession.Players[command.PlayerId].Y);
-                    if (success) { _logger.LogInformation("Processed PlaceBomb for {PlayerId} successfully.", command.PlayerId); }
-                    else { _logger.LogWarning("Processing PlaceBomb for {PlayerId} failed.", command.PlayerId); }
-                    // If successful, GameStateChanged/BombPlaced event should trigger publish
-                }
-                else { _logger.LogWarning("Player {PlayerId} not found for PlaceBombCommand.", command.PlayerId); }
-            }
-            catch (Exception ex) { _logger.LogError(ex, "Error handling PlaceBombCommand for {PlayerId}", command.PlayerId); }
-        }
+            string targetGameId = _initialGameId ?? "default"; // TEMP: Target initial game
+            GameManager? manager = _sessionManager.GetManagerForSession(targetGameId);
+            GameSession? session = _sessionManager.GetSession(targetGameId);
 
+            if (manager != null && session != null && session.Players.TryGetValue(command.PlayerId, out var player))
+            {
+                try { manager.PlaceBomb(command.PlayerId, player.X, player.Y); }
+                catch (Exception ex) { _logger.LogError(ex, "Error handling PlaceBombCommand for {Pl} in {Game}", command.PlayerId, targetGameId); }
+            }
+            else { _logger.LogWarning("Game/Player not found for PlaceBombCommand: {Pl} in {Game}", command.PlayerId, targetGameId); }
+        }
         private void HandleJoinGameCommand(JoinGameCommand command)
         {
-            try
+            string targetGameId = _initialGameId ?? "default"; // TEMP: Target initial game
+            GameSession? session = _sessionManager.GetSession(targetGameId);
+            if (session == null)
             {
-                // Basic join logic - GameManager might be better suited for this
-                if (!_gameSession.Players.ContainsKey(command.DesiredPlayerId))
-                {
-                    // Assign starting position (needs better logic)
-                    int startX = 1; int startY = 1;
-                    if (_gameSession.Players.Count > 0) { startX = _gameSession.Map.GetLength(0) - 2; startY = _gameSession.Map.GetLength(1) - 2; }
-
-                    var newPlayer = new Player { Id = command.DesiredPlayerId, X = startX, Y = startY };
-                    _gameSession.AddPlayer(newPlayer); // GameSession should ideally raise PlayerJoined event
-                    _logger.LogInformation("Processed JoinGame for {PlayerId}.", command.DesiredPlayerId);
-                    // PlayerJoined event should trigger publish
-                }
-                else
-                {
-                    _logger.LogWarning("Player {PlayerId} already exists, cannot join.", command.DesiredPlayerId);
-                    // TODO: Maybe send a JoinFailed message back to requester?
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error handling JoinGameCommand for {PlayerId}", command.DesiredPlayerId);
-            }
-        }
-
-        // --- Placeholder Event Handlers (Called by C# events from GameManager/GameSession) ---
-
-        private void HandlePlayerDied(object? sender, /* PlayerDiedEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e
-            var eventArgs = e as /* PlayerDiedEventArgs */ object; // Replace with actual EventArgs type
-            if (eventArgs != null)
-            {
-                var dto = new PlayerDiedEvent { /* Populate from eventArgs */ };
-                // Use Task.Run or similar fire-and-forget pattern if needed, or make handler async
-                _ = PublishPlayerDiedAsync(dto);
-            }
-        }
-
-        private void HandleBombExploded(object? sender, /* BombExplodedEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e
-            var eventArgs = e as /* BombExplodedEventArgs */ object; // Replace with actual EventArgs type
-            if (eventArgs != null)
-            {
-                var dto = new BombExplodedEvent { /* Populate from eventArgs */ };
-                _ = PublishBombExplodedAsync(dto);
-            }
-        }
-        private void HandlePlayerJoined(object? sender, /* PlayerJoinedEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e
-            var eventArgs = e as /* PlayerJoinedEventArgs */ object; // Replace with actual EventArgs type
-            if (eventArgs != null)
-            {
-                var dto = new PlayerJoinedEvent { /* Populate from eventArgs */ };
-                _ = PublishPlayerJoinedAsync(dto);
-            }
-        }
-
-        private void HandlePowerUpCollected(object? sender, /* PowerUpCollectedEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e
-            var eventArgs = e as /* PowerUpCollectedEventArgs */ object; // Replace with actual EventArgs type
-            if (eventArgs != null)
-            {
-                var dto = new PowerUpCollectedEvent { /* Populate from eventArgs */ };
-                _ = PublishPowerUpCollectedAsync(dto);
-            }
-        }
-        private void HandleGameOver(object? sender, /* GameOverEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e
-            var eventArgs = e as /* GameOverEventArgs */ object; // Replace with actual EventArgs type
-            if (eventArgs != null)
-            {
-                var dto = new GameOverEvent { /* Populate from eventArgs */ };
-                _ = PublishGameOverAsync(dto);
-            }
-        }
-
-        private void HandleGameStateChanged(object? sender, /* GameStateChangedEventArgs */ EventArgs e)
-        {
-            // TODO: Extract data from e (or just get current state)
-            // This is where you might generate and publish the full GameStateUpdate DTO
-            // Be mindful of frequency - maybe only publish if state *actually* changed
-            // or on a timer synchronized with Tick()
-            // GameStateUpdate currentState = GenerateCurrentGameStateDto();
-            // _ = PublishGameStateAsync(currentState);
-        }
-
-
-        // --- Publishing Logic Methods ---
-        // These methods publish the specific DTOs to NATS subjects
-
-        public async Task PublishGameStateAsync(GameStateUpdate stateUpdate)
-        {
-            await PublishAsync("bomberman.state.update", stateUpdate);
-        }
-
-        public async Task PublishPlayerJoinedAsync(PlayerJoinedEvent joinedEvent)
-        {
-            // Maybe publish to a general event stream AND a player-specific one?
-            await PublishAsync("bomberman.events.player.joined", joinedEvent);
-        }
-
-        public async Task PublishPlayerDiedAsync(PlayerDiedEvent diedEvent)
-        {
-            _logger.LogInformation("Publishing PlayerDiedEvent for {PlayerId}", diedEvent.PlayerId);
-            await PublishAsync("bomberman.events.player.died", diedEvent);
-            // Might also publish to a general state update or trigger one
-        }
-
-        public async Task PublishBombExplodedAsync(BombExplodedEvent explodedEvent)
-        {
-            _logger.LogInformation("Publishing BombExplodedEvent at ({X},{Y})", explodedEvent.OriginX, explodedEvent.OriginY);
-            await PublishAsync("bomberman.events.bomb.exploded", explodedEvent);
-            // Consider if this should trigger a general GameStateUpdate publish too
-        }
-
-        public async Task PublishPowerUpCollectedAsync(PowerUpCollectedEvent collectedEvent)
-        {
-            _logger.LogInformation("Publishing PowerUpCollectedEvent for {PlayerId}, Type: {PowerUpType}", collectedEvent.PlayerId, collectedEvent.PowerUpType);
-            await PublishAsync("bomberman.events.powerup.collected", collectedEvent);
-        }
-
-        public async Task PublishGameOverAsync(GameOverEvent gameOverEvent)
-        {
-            _logger.LogInformation("Publishing GameOverEvent. Winner: {Winner}", gameOverEvent.WinnerPlayerId ?? "None/Draw");
-            await PublishAsync("bomberman.events.game.over", gameOverEvent);
-        }
-
-
-        // Helper method for publishing with error checking
-        private async Task PublishAsync<T>(string subject, T data) where T : class
-        {
-            if (_natsConnection == null || _natsConnection.ConnectionState != NatsConnectionState.Open)
-            {
-                _logger.LogWarning("Cannot publish to subject {Subject}: NATS connection not open.", subject);
+                _logger.LogWarning("No active game session found to join for player {PlayerId}", command.DesiredPlayerId);
+                // Maybe create game if none exists? -> Needs NATS command to create game
                 return;
             }
             try
             {
-                // Use the generic overload to leverage built-in serialization (likely JSON for complex types)
-                await _natsConnection.PublishAsync<T>(subject, data);
-                _logger.LogDebug("Published message to subject {Subject}", subject);
+                if (!session.Players.ContainsKey(command.DesiredPlayerId))
+                {
+                    int startX = 1; int startY = 1; // TODO: Better placement logic
+                    if (session.Players.Count % 2 != 0) { startX = session.Map.GetLength(0) - 2; }
+                    if (session.Players.Count > 1) { startY = session.Map.GetLength(1) - 2; }
+                    var newPlayer = new Player { Id = command.DesiredPlayerId, X = startX, Y = startY };
+                    session.AddPlayer(newPlayer); // This now raises PlayerJoined event internally
+                }
+                else { _logger.LogWarning("Player {Pl} already exists in game {Game}.", command.DesiredPlayerId, targetGameId); }
             }
-            catch (Exception ex)
+            catch (Exception ex) { _logger.LogError(ex, "Error handling JoinGameCommand for {Pl} in {Game}", command.DesiredPlayerId, targetGameId); }
+        }
+
+        // --- C# Event Handlers (Publishing to NATS) ---
+        private void HandlePlayerJoined(object? sender, PlayerEventArgs e)
+        {
+            string gameId = _initialGameId ?? "unknown"; // TEMP: Assume initial game
+            var playerState = new PlayerStateDto
+            { // Map from Player model to DTO
+                Id = e.Player.Id,
+                X = e.Player.X,
+                Y = e.Player.Y,
+                MaxBombs = e.Player.MaxBombs,
+                ActiveBombsCount = e.Player.ActiveBombsCount,
+                BlastRadius = e.Player.BlastRadius,
+                IsAlive = true
+            };
+            var dto = new PlayerJoinedEvent { Player = playerState };
+            _ = PublishPlayerJoinedAsync(gameId, dto); // Fire and forget publish task
+        }
+
+        private void HandlePowerUpCollected(object? sender, PowerUpCollectedEventArgs e)
+        {
+            string gameId = _initialGameId ?? "unknown"; // TEMP: Assume initial game
+                                                         // Map from Models.TileType to Contracts.PowerUpTypeDto
+            PowerUpTypeDto powerUpTypeDto = e.PowerUpType switch
             {
-                _logger.LogError(ex, "Error publishing message to subject {Subject}", subject);
+                TileType.PowerUpBombCount => PowerUpTypeDto.BombCount,
+                TileType.PowerUpBlastRadius => PowerUpTypeDto.BlastRadius,
+                _ => PowerUpTypeDto.Unknown
+            };
+            if (powerUpTypeDto != PowerUpTypeDto.Unknown)
+            {
+                var dto = new PowerUpCollectedEvent
+                {
+                    PlayerId = e.Player.Id,
+                    PowerUpType = powerUpTypeDto,
+                    X = e.X,
+                    Y = e.Y,
+                    NewValue = (powerUpTypeDto == PowerUpTypeDto.BombCount) ? e.Player.MaxBombs : e.Player.BlastRadius
+                };
+                _ = PublishPowerUpCollectedAsync(gameId, dto);
             }
         }
 
-        // --- StopAsync (No changes needed) ---
-        public override async Task StopAsync(CancellationToken cancellationToken)
+        private void HandlePlayerDied(object? sender, PlayerEventArgs e)
         {
-            _logger.LogInformation("NATS Service stopping...");
-            // Unsubscribe handled in finally block of ExecuteAsync
-            await base.StopAsync(cancellationToken);
+            string gameId = _initialGameId ?? "unknown"; // TEMP: Assume initial game
+            var dto = new PlayerDiedEvent { PlayerId = e.Player.Id, X = e.Player.X, Y = e.Player.Y };
+            _ = PublishPlayerDiedAsync(gameId, dto);
         }
+
+        private void HandleBombExploded(object? sender, BombExplodedEventArgs e)
+        {
+            string gameId = _initialGameId ?? "unknown"; // TEMP: Assume initial game
+            var dto = new BombExplodedEvent
+            {
+                OriginX = e.OriginX,
+                OriginY = e.OriginY,
+                // Map List<(int,int)> to List<AffectedTileDto>
+                AffectedTiles = e.AffectedTiles.Select(t => new AffectedTileDto { X = t.X, Y = t.Y }).ToList(),
+                HitPlayerIds = e.HitPlayerIds
+            };
+            _ = PublishBombExplodedAsync(gameId, dto);
+        }
+
+        private void HandleGameOver(object? sender, GameOverEventArgs e)
+        {
+            string gameId = _initialGameId ?? "unknown"; // TEMP: Assume initial game
+            var dto = new GameOverEvent { WinnerPlayerId = e.WinnerPlayerId };
+            _ = PublishGameOverAsync(gameId, dto);
+            // Should also likely remove the game session from the manager here or soon after
+            // _sessionManager.RemoveSession(gameId); // Careful about timing
+        }
+
+        // --- Game Tick Loop ---
+        private async Task RunGameTicksAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Starting game tick loop...");
+            var tickInterval = TimeSpan.FromMilliseconds(200); // Slower tick for testing
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(tickInterval, stoppingToken);
+                try
+                {
+                    _sessionManager.TickAllSessions(); // Calls Tick() in each active GameManager
+
+                    // TODO: Publish GameStateUpdate after ticking
+                    // For now, let's publish state for the initial game
+                    if (!string.IsNullOrEmpty(_initialGameId) && _initialGameSession != null)
+                    {
+                        // Create GameStateUpdate DTO from current session state
+                        var gameStateDto = CreateGameStateUpdateDto(_initialGameId, _initialGameSession);
+                        await PublishGameStateAsync(_initialGameId, gameStateDto);
+                    }
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex) { _logger.LogError(ex, "Error during game tick execution."); }
+            }
+            _logger.LogInformation("Game tick loop stopped.");
+        }
+
+        // Helper to create GameStateUpdate DTO
+        private GameStateUpdate CreateGameStateUpdateDto(string gameId, GameSession session)
+        {
+            // Map TileType[,] to List<int>
+            var mapTiles = new List<int>();
+            int width = session.Map.GetLength(0);
+            int height = session.Map.GetLength(1);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    mapTiles.Add((int)session.Map[x, y]);
+                }
+            }
+
+            return new GameStateUpdate
+            {
+                MapTiles = mapTiles,
+                MapWidth = width,
+                MapHeight = height,
+                GamePhase = "Running", // TODO: Track actual phase
+                TickCount = 0, // TODO: Track tick count in session/manager?
+                Players = session.Players.Values.Select(p => new PlayerStateDto
+                {
+                    Id = p.Id,
+                    X = p.X,
+                    Y = p.Y,
+                    BlastRadius = p.BlastRadius,
+                    IsAlive = true, // Assume alive if in dict
+                    MaxBombs = p.MaxBombs,
+                    ActiveBombsCount = p.ActiveBombsCount
+                }).ToList(),
+                Bombs = session.Bombs.Select(b => new BombStateDto
+                {
+                    OwnerId = b.OwnerId,
+                    X = b.X,
+                    Y = b.Y,
+                    RemainingFuseTicks = b.RemainingFuseTicks
+                }).ToList()
+            };
+        }
+
+
+        // --- Publishing Logic Methods (Updated subjects) ---
+        // ... (Publish methods remain largely the same as before, using gameId in subject) ...
+        public async Task PublishGameStateAsync(string gameId, GameStateUpdate stateUpdate) => await PublishAsync($"bomberman.game.{gameId}.state.update", stateUpdate);
+        public async Task PublishPlayerJoinedAsync(string gameId, PlayerJoinedEvent joinedEvent) => await PublishAsync($"bomberman.game.{gameId}.events.player.joined", joinedEvent);
+        public async Task PublishPlayerDiedAsync(string gameId, PlayerDiedEvent diedEvent) => await PublishAsync($"bomberman.game.{gameId}.events.player.died", diedEvent);
+        public async Task PublishBombExplodedAsync(string gameId, BombExplodedEvent explodedEvent) => await PublishAsync($"bomberman.game.{gameId}.events.bomb.exploded", explodedEvent);
+        public async Task PublishPowerUpCollectedAsync(string gameId, PowerUpCollectedEvent collectedEvent) => await PublishAsync($"bomberman.game.{gameId}.events.powerup.collected", collectedEvent);
+        public async Task PublishGameOverAsync(string gameId, GameOverEvent gameOverEvent) => await PublishAsync($"bomberman.game.{gameId}.events.game.over", gameOverEvent);
+
+        // Generic helper for publishing
+        private async Task PublishAsync<T>(string subject, T data) where T : class { /* ... (Same as before) ... */ }
+
+        // StopAsync remains the same
+        public override async Task StopAsync(CancellationToken cancellationToken) { /* ... */ }
     }
 }

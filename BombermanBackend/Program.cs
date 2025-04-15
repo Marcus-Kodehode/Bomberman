@@ -4,48 +4,34 @@ using Microsoft.Extensions.Logging;
 using BombermanBackend.Logic;
 using BombermanBackend.Models;
 using BombermanBackend.Services;
-using System; // Kept for Console.WriteLine in placeholder
+using System;
 
 IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>
     {
-        services.AddSingleton<GameSession>(sp =>
-        {
-            // TODO: Load map dimensions from configuration
-            const int mapWidth = 9;
-            const int mapHeight = 9;
-            var session = new GameSession(mapWidth, mapHeight);
+        // Register GameSessionManager as a Singleton
+        // It will be responsible for creating and managing individual GameSession/GameManager instances
+        services.AddSingleton<GameSessionManager>();
 
-            // --- Placeholder: Create an empty map with borders ---
-            // Replace this with your actual map loading/generation
-            for (int x = 0; x < mapWidth; x++)
-            {
-                for (int y = 0; y < mapHeight; y++)
-                {
-                    if (x == 0 || x == mapWidth - 1 || y == 0 || y == mapHeight - 1)
-                    {
-                        session.Map[x, y] = TileType.Wall;
-                    }
-                    else
-                    {
-                        session.Map[x, y] = TileType.Empty;
-                    }
-                }
-            }
-            // Consider adding some initial DestructibleWall or Powerups via generation here
+        // GameSession and GameManager are no longer registered directly here as singletons.
+        // Their lifecycle is managed *per game* by the GameSessionManager.
+        // If GameManager had other dependencies, they would need to be registered here
+        // so GameSessionManager could resolve them via IServiceProvider if needed.
 
-            return session;
-        });
-
-        services.AddSingleton<GameManager>();
+        // Register MapPrinter - GameManager might need it, or SessionManager might pass it
         services.AddSingleton<MapPrinter>();
+
+        // Register NatsService as a Singleton and Hosted Service
+        // NOTE: NatsService constructor and logic will need to change to accept
+        // GameSessionManager instead of GameSession/GameManager directly.
         services.AddSingleton<NatsService>();
         services.AddHostedService(sp => sp.GetRequiredService<NatsService>());
+
         services.AddLogging(configure => configure.AddConsole());
     })
     .Build();
 
-// Consider replacing Console.WriteLine with proper logging
+// TODO: Consider replacing Console.WriteLine with injected ILogger
 Console.WriteLine("Bomberman Backend Service starting...");
 await host.RunAsync();
 Console.WriteLine("Bomberman Backend Service stopped.");

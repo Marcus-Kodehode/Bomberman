@@ -1,37 +1,69 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging; // Required for ILogger
 using BombermanBackend.Logic;
 using BombermanBackend.Models;
 using BombermanBackend.Services;
-using System;
+using System; // Needed only for EventArgs if not moved
 
-IHost host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices((context, services) =>
+// Define a class name for the logger category if using top-level statements
+// This is often implicitly 'Program' but making it explicit can be clearer.
+public class Program
+{
+    public static async Task Main(string[] args)
     {
-        // Register GameSessionManager as a Singleton
-        // It will be responsible for creating and managing individual GameSession/GameManager instances
-        services.AddSingleton<GameSessionManager>();
+        IHost host = Host.CreateDefaultBuilder(args)
+            .ConfigureServices((context, services) =>
+            {
+                services.AddSingleton<GameSessionManager>();
+                services.AddSingleton<MapPrinter>();
+                services.AddSingleton<NatsService>();
+                services.AddHostedService(sp => sp.GetRequiredService<NatsService>());
+                services.AddLogging(configure => configure.AddConsole()); // Console logger configured here
 
-        // GameSession and GameManager are no longer registered directly here as singletons.
-        // Their lifecycle is managed *per game* by the GameSessionManager.
-        // If GameManager had other dependencies, they would need to be registered here
-        // so GameSessionManager could resolve them via IServiceProvider if needed.
+                // Add the GameSession factory delegate separately for clarity
+                services.AddSingleton<GameSession>(sp =>
+                {
+                    // TODO: Load map dimensions from configuration
+                    const int mapWidth = 9;
+                    const int mapHeight = 9;
+                    var session = new GameSession(mapWidth, mapHeight);
 
-        // Register MapPrinter - GameManager might need it, or SessionManager might pass it
-        services.AddSingleton<MapPrinter>();
+                    // Placeholder: Create an empty map with borders
+                    for (int x = 0; x < mapWidth; x++)
+                    {
+                        for (int y = 0; y < mapHeight; y++)
+                        {
+                            if (x == 0 || x == mapWidth - 1 || y == 0 || y == mapHeight - 1)
+                            {
+                                session.Map[x, y] = TileType.Wall;
+                            }
+                            else
+                            {
+                                session.Map[x, y] = TileType.Empty;
+                            }
+                        }
+                    }
+                    // Placeholder: Add some initial items
+                    // session.Map[1, 3] = TileType.DestructibleWall;
+                    // session.Map[1, 2] = TileType.PowerUpBlastRadius;
+                    // session.Map[1, 4] = TileType.PowerUpBombCount;
 
-        // Register NatsService as a Singleton and Hosted Service
-        // NOTE: NatsService constructor and logic will need to change to accept
-        // GameSessionManager instead of GameSession/GameManager directly.
-        services.AddSingleton<NatsService>();
-        services.AddHostedService(sp => sp.GetRequiredService<NatsService>());
+                    return session;
+                });
 
-        services.AddLogging(configure => configure.AddConsole());
-    })
-    .Build();
+            })
+            .Build();
 
-// TODO: Consider replacing Console.WriteLine with injected ILogger
-Console.WriteLine("Bomberman Backend Service starting...");
-await host.RunAsync();
-Console.WriteLine("Bomberman Backend Service stopped.");
+        // Get the logger service AFTER building the host
+        var logger = host.Services.GetRequiredService<ILogger<Program>>();
+
+        // Use the logger for startup message
+        logger.LogInformation("Bomberman Backend Service starting...");
+
+        await host.RunAsync(); // Runs the application and blocks until shutdown
+
+        // Use the logger for shutdown message (will run after Ctrl+C or shutdown signal)
+        logger.LogInformation("Bomberman Backend Service stopped.");
+    }
+}

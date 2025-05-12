@@ -1,14 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"> <!-- Angir dokumenttype og språk -->
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bomberman Frontend</title>
+    <meta charset="UTF-8" /> <!-- Setter tekstkodingen til UTF-8 -->
+    <link rel="icon" href="/favicon.svg" /> <!-- Lenke til favicon som vises i fanen -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Sikrer korrekt skalering på mobilenheter -->
+    <title>Bomberman Frontend</title> <!-- Tittelen som vises i nettleserfanen -->
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <div id="root"></div> <!-- React-renderer monterer hele appen her -->
+    <script type="module" src="/src/main.jsx"></script> <!-- Importerer hoved-JSX-filen som starter React -->
   </body>
 </html>
 
+
+<!--
+Denne filen, index.html, er inngangspunktet for frontend-applikasjonen. 
+Den setter opp grunnleggende metadata som språk, tegnkoding og viewport for mobilvennlighet, 
+innehodler en <div id="root"> der React-applikasjonen monteres, 
+og laster inn hovedscriptet main.jsx som starter hele React-renderingsprosessen.
+-->

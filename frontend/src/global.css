@@ -1,24 +1,37 @@
+/* src/global.css */
+
+/* ---------- Tema-variabler ---------- */
 :root {
   --bg: #1e1e2f;
   --panel-bg: #27293d;
-  --text: #fff;
+  --text: #ffffff;
   --gap: #11121b;
-  --wall-fixed:   #2e2e3a;  /* litt lysere enn bakgrunn */
-  --wall-dest:    #8b0000;  /* sterk rød/brun for sprengbar */
-  --empty:        #1e1e2f;
-  --player:       #00ff7f;
-  --bomb:         #ff4500;
-  --explosion:    #ffd700;
+
+  --empty: #1e1e2f;
+  --wall-fixed: #2e2e3a;
+  --wall-dest: #8b0000;
+  --player: #00ff7f;
+  --bomb: #ff4500;
+  --explosion: #ffd700;
+
+  --accent: #f5a623;
+  --accent-dark: #d17d11;
+
   --font: 'Segoe UI', sans-serif;
 }
 
+/* ---------- Reset & layout ---------- */
 *,
 *::before,
 *::after {
-  margin: 0; padding: 0; box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 html, body {
-  width: 100%; height: 100%; overflow: hidden;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 body {
   font-family: var(--font);
@@ -26,34 +39,48 @@ body {
   color: var(--text);
 }
 
+/* ---------- App-container ---------- */
 .app-container {
-  display: flex; flex-direction: column;
-  height: 100vh; width: 100vw;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
 }
 
+/* ---------- Header ---------- */
 .header {
   background: var(--panel-bg);
-  padding: 1rem; text-align: center;
+  padding: 1rem;
+  text-align: center;
   box-shadow: 0 2px 5px rgba(0,0,0,0.5);
 }
-.header h1 { font-size: 1.5rem; }
-
-.main {
-  display: flex; flex: 1; overflow: hidden;
+.header h1 {
+  font-size: 1.5rem;
 }
 
+/* ---------- Main (grid + sidebar) ---------- */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ---------- Grid-wrapper ---------- */
 .grid-wrapper {
   position: relative;
-  flex: 1; background: var(--gap);
+  flex: 1;
+  background: var(--gap);
   padding: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Bombeteller over brettet */
 .bomb-timer {
   position: absolute;
-  top: 8px; left: 50%;
+  top: 8px;
+  left: 50%;
   transform: translateX(-50%);
   background: var(--bomb);
   color: #000;
@@ -63,6 +90,7 @@ body {
   z-index: 5;
 }
 
+/* ---------- Sidebar ---------- */
 .sidebar {
   width: 260px;
   background: var(--panel-bg);
@@ -70,23 +98,38 @@ body {
   border-left: 2px solid var(--gap);
   overflow-y: auto;
 }
-.sidebar h2 { margin-bottom: 0.5rem; }
-.sidebar ul { list-style: disc inside; margin-bottom: 1rem; }
+.sidebar h2 {
+  margin-bottom: 0.5rem;
+}
+.sidebar ul {
+  list-style: disc inside;
+  margin-bottom: 1rem;
+}
 .sidebar .btns button {
   margin: 0.25rem;
   padding: 0.5rem 1rem;
-  background: var(--player);
-  border: none;
+  background: var(--accent);
+  border: 2px solid var(--accent-dark);
   border-radius: 4px;
   cursor: pointer;
   color: #000;
+  transition: background 0.2s, transform 0.1s;
 }
-.sidebar .btns button:hover { opacity: 0.8; }
+.sidebar .btns button:hover {
+  background: var(--accent-dark);
+  transform: scale(1.05);
+}
 
-.legend { margin-top: 1rem; }
+/* ---------- Legend ---------- */
+.legend {
+  margin-top: 1rem;
+}
 .legend-box {
-  display: inline-block; width: 16px; height: 16px;
-  margin-right: 0.5rem; vertical-align: middle;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
 }
 .legend-box.wall-fixed { background: var(--wall-fixed); }
 .legend-box.wall-dest  { background: var(--wall-dest); }
@@ -95,20 +138,56 @@ body {
 .legend-box.bomb       { background: var(--bomb); }
 .legend-box.explosion  { background: var(--explosion); }
 
-.loading { color: #aaa; font-size: 1.2rem; }
+/* ---------- Loading ---------- */
+.loading {
+  color: #aaa;
+  font-size: 1.2rem;
+}
 
+/* ---------- Overlays ---------- */
 .overlay {
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(39,41,61,0.95);
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   z-index: 10;
 }
-.overlay h2 { color: #fff; margin-bottom: 1rem; }
+.overlay h2 {
+  color: #fff;
+  margin-bottom: 1rem;
+}
 .overlay button {
   padding: 0.75rem 1.5rem;
-  background: var(--player);
-  border: none; border-radius: 5px;
-  font-size: 1rem; cursor: pointer;
+  background: var(--accent);
+  border: 2px solid var(--accent-dark);
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
 }
-.overlay button:hover { opacity: 0.9; }
+.overlay button:hover {
+  background: var(--accent-dark);
+  transform: scale(1.05);
+}
+
+/* ---------- Start-screen spesifikt ---------- */
+.overlay.start-screen {
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.8),
+    rgba(0,0,0,0.95)
+  );
+}
+.overlay.start-screen .logo {
+  max-width: 250px;
+  width: 60%;
+  margin-bottom: 2rem;
+  filter: drop-shadow(0 0 10px var(--accent));
+}
+.overlay.start-screen .start-btn {
+  padding: 0.75rem 2rem;
+  font-size: 1.25rem;
+}

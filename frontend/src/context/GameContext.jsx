@@ -40,18 +40,21 @@ import React, {
   
     // Memoized funksjon for å plassere bombe og starte nedtelling
     const placeBomb = useCallback(id => {
-      apiBomb(id);             // Kall mock API
-      setBombTimer(5);         // Start nedtelling fra 5 sekunder
-      const iv = setInterval(() => {
-        setBombTimer(bt => {
-          if (bt <= 1) {       // Når teller når 0, stopp interval og sett til 0
-            clearInterval(iv);
-            return 0;
-          }
-          return bt - 1;       // Reduser teller med 1 hvert sekund
-        });
-      }, 1000);
-    }, []);
+        apiBomb(id);             // Call the mock API
+        const FUSE = 1;           // Actual fuse time in seconds
+        setBombTimer(FUSE);       // Start countdown from 1 second
+      
+        const iv = setInterval(() => {
+          setBombTimer(bt => {
+            if (bt <= 1) {        // When timer reaches 0, stop interval
+              clearInterval(iv);
+              return 0;
+            }
+            return bt - 1;        // Decrease timer by 1 each second
+          });
+        }, 1000);
+      }, []);
+      
   
     // Returnerer provider med alle verdier og funksjoner i context
     return (

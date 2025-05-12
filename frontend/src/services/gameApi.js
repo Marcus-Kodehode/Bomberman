@@ -85,6 +85,7 @@ export async function movePlayer(id, dx, dy) {
  * - ødelegger sprengbare vegger
  * - setter gameOver hvis spilleren treffes
  */
+// eslint-disable-next-line no-unused-vars
 export async function placeBomb(id) {
   const bx = player.x, by = player.y;
   map[by][bx] = 'Bomb';                                    // Sett bombe

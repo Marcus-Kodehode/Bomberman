@@ -1,63 +1,61 @@
 // src/App.jsx
-import React, { useState, useEffect } from 'react';                 // Import React and hooks
-import Grid from './components/Grid/Grid';                          // Import the grid component
-import { useGame } from './context/GameContext';                    // Import custom hook for game state
+import React, { useState, useEffect } from 'react';                 // Import React + hooks
+import Grid from './components/Grid/Grid';                          // Spillebrett-komponenten
+import { useGame } from './context/GameContext';                    // Custom hook for spill-state
 
 export default function App() {
   const {
-    map,           // The game map as a 2D array
-    gameOver,      // Boolean flag indicating game over
-    bombTimer,     // Countdown until bomb explosion
-    joinGame,      // Function to join the game
-    movePlayer,    // Function to move the player
-    placeBomb      // Function to place a bomb
+    map,           // 2D-array: kartet
+    gameOver,      // true når spilleren har tapt
+    bombTimer,     // nedtelling til eksplosjon
+    joinGame,      // starter spillet
+    movePlayer,    // flytt‐funksjon
+    placeBomb      // plassér bombe‐funksjon
   } = useGame();
 
-  const [started, setStarted] = useState(false);                    // State: has the game started?
+  const [started, setStarted] = useState(false);                    // om spillet har startet
 
-  // When user clicks "Start Game", call joinGame
+  // Når brukeren trykker «Start Game», kalles joinGame
   useEffect(() => {
-    if (started) {
-      joinGame('player1');
-    }
+    if (started) joinGame('player1');
   }, [started, joinGame]);
 
-  // Keyboard controls: W/A/S/D, Space, P
+  // Tastaturstyring: W/A/S/D, Space, P
   useEffect(() => {
-    if (!started || gameOver) return;                              // Only active during gameplay
+    if (!started || gameOver) return;
     const onKey = e => {
       switch (e.key) {
         case 'w': case 'W':
-          movePlayer('player1', 0, -1); break;                    // Move up
+          movePlayer('player1', 0, -1); break;                    // opp
         case 's': case 'S':
-          movePlayer('player1', 0,  1); break;                    // Move down
+          movePlayer('player1', 0,  1); break;                    // ned
         case 'a': case 'A':
-          movePlayer('player1', -1, 0); break;                    // Move left
+          movePlayer('player1', -1, 0); break;                    // venstre
         case 'd': case 'D':
-          movePlayer('player1', 1,  0); break;                    // Move right
+          movePlayer('player1', 1,  0); break;                    // høyre
         case ' ':
-          placeBomb('player1'); break;                            // Place bomb
+          placeBomb('player1'); break;                            // legg bombe
         case 'p': case 'P':
-          window.location.reload();                                // Restart game
+          window.location.reload();                                // restart
           break;
       }
     };
-    window.addEventListener('keydown', onKey);                      // Add listener
-    return () => window.removeEventListener('keydown', onKey);      // Cleanup on unmount
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [started, gameOver, movePlayer, placeBomb]);
 
-  // Render start screen if not started
+  // ** Start‐skjerm **
   if (!started) {
     return (
       <div className="overlay start-screen">
         <img
           src="/images/Logo.png"
           alt="Bomberman Logo"
-          className="logo"                                         // Display game logo
+          className="logo"                                      // Spillelogo øverst
         />
         <button
           className="start-btn"
-          onClick={() => setStarted(true)}                         // Start game on click
+          onClick={() => setStarted(true)}                       // Start
         >
           Start Game
         </button>
@@ -65,19 +63,19 @@ export default function App() {
     );
   }
 
-  // Render game over overlay if gameOver
+  // ** Game Over‐skjerm **
   if (gameOver) {
     return (
       <div className="overlay">
         <h2>Game Over!</h2>
-        <button onClick={() => window.location.reload()}>         {/* Restart page */}
+        <button onClick={() => window.location.reload()}>      {/* Restart */}
           Restart
         </button>
       </div>
     );
   }
 
-  // Main UI during gameplay
+  // ** Hoved‐UI under spilling **
   return (
     <div className="app-container">
       <header className="header">
@@ -85,16 +83,16 @@ export default function App() {
       </header>
 
       <div className="main">
-        <div className="grid-wrapper">                             {/* Game board container */}
-          {bombTimer > 0 && (                                      // Show bomb countdown
+        <div className="grid-wrapper">
+          {bombTimer > 0 && (                                     // vis nedtelling
             <div className="bomb-timer">
               Bomb explodes in {bombTimer}s
             </div>
           )}
 
-          {!map                                                    // Show loading if map not ready
-            ? <p className="loading">Loading gamedata...</p>
-            : <Grid tiles={map} />                                 // Render the grid
+          {!map
+            ? <p className="loading">Loading gamedata…</p>
+            : <Grid tiles={map} />                              // rendrer brettet
           }
         </div>
 
@@ -114,37 +112,46 @@ export default function App() {
             <button onClick={() => placeBomb('player1')}>Bomb</button>
           </div>
 
-          <div className="legend">                                {/* Color legend */}
+          <div className="legend">
             <h3>Color Legend</h3>
             <ul>
-              <li><span className="legend-box wall-fixed" /> Indestructible Wall</li>
-              <li><span className="legend-box wall-dest" /> Destructible Wall</li>
-              <li><span className="legend-box empty" /> Empty Space</li>
-              <li><span className="legend-box player" /> Player</li>
-              <li><span className="legend-box bomb" /> Bomb (explodes in {bombTimer}s)</li>
-              <li><span className="legend-box explosion" /> Explosion</li>
+              <li><span className="legend-box wall-fixed" />Indestructible Wall</li>
+              <li><span className="legend-box wall-dest" />Destructible Wall</li>
+              <li><span className="legend-box empty" />Empty Space</li>
+              <li><span className="legend-box player" />Player</li>
+              <li><span className="legend-box bomb" />Bomb (explodes in {bombTimer}s)</li>
+              <li><span className="legend-box explosion" />Explosion</li>
             </ul>
           </div>
 
-          {/* Logo column */}
+          {/* Klikkbar logo + egen logo + credit */}
           <div className="footer-logos">
             <img
               src="/images/Logo.png"
-              alt="The Mad Bomberman Logo"
+              alt="Bomberman Logo"
               className="footer-logo"
             />
-            <img
-              src="/images/MBlogo.png"
-              alt="MB Logo"
-              className="footer-logo"
-            />
-            <p className="credit">_design by Børresen Utvikling_</p>
+
+            <a
+              href="https://github.com/Marcus-Kodehode"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="/images/MBlogo.png"
+                alt="The Mad Bomberman GitHub"
+                className="footer-logo"
+              />
+            </a>
+
+            <div className="credit">design by Børresen Utvikling</div>
           </div>
         </aside>
       </div>
     </div>
   );
 }
+
 
 /*
 App.jsx is the main React component for the Bomberman frontend. It handles:

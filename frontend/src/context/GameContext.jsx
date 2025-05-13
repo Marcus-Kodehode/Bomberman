@@ -1,83 +1,78 @@
-// src/context/GameContext.jsx
 import React, {
-    createContext,    // Lager en Context for game state
-    useContext,       // Hook for å hente context-verdier
-    useState,         // Hook for lokal state i provider
-    useEffect,        // Hook for side-effekter (abonnement på game state)
-    useCallback       // Hook for å memoize callback-funksjoner
-  } from 'react';
-  import {
-    subscribeGameState,    // Abonnement på kart- og gameOver-oppdateringer
-    joinGame as apiJoin,   // API-funksjon for å bli med i spillet
-    movePlayer as apiMove, // API-funksjon for å flytte spiller
-    placeBomb as apiBomb   // API-funksjon for å plassere bombe
-  } from '../services/gameApi';
-  
-  const GameContext = createContext(); // Oppretter context-objektet
-  
-  export function GameProvider({ children }) {
-    const [map, setMap] = useState(null);          // State for spillkartet (2D-array)
-    const [gameOver, setGameOver] = useState(false); // State for om spillet er over
-    const [bombTimer, setBombTimer] = useState(0);   // State for bombenedteller
-  
-    // Abonner på mock-APIets game state ved mount
-    useEffect(() => {
-      const unsub = subscribeGameState(({ map, gameOver }) => {
-        setMap(map);                     // Oppdater kartet
-        if (gameOver) setGameOver(true); // Sett gameOver hvis flagget er true
+  createContext, useContext,
+  useState, useEffect, useCallback
+} from 'react';
+import {
+  subscribeGameState,
+  joinGame as apiJoin,
+  movePlayer as apiMove,
+  placeBomb as apiBomb
+} from '../services/gameApi';
+
+const GameContext = createContext();
+
+export function GameProvider({ children }) {
+  const [map, setMap] = useState(null);
+  const [gameOver, setGameOver] = useState(false);
+  const [bombTimer, setBombTimer] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribeGameState(({ map, gameOver }) => {
+      setMap(map);
+      if (gameOver) setGameOver(true);
+    });
+    return unsub;
+  }, []);
+
+  const joinGame = useCallback(id => apiJoin(id), []);
+  const movePlayer = useCallback((id, dx, dy) => apiMove(id, dx, dy), []);
+
+  const placeBomb = useCallback(id => {
+    // **Spill av fuse-lyd umiddelbart** (bruker Space eller knapp er en bruker­handling)
+    const fuseSound = new Audio('/sounds/fuse.mp3');
+    fuseSound.play().catch(() => {/* ignorér autoplay-feil */});
+
+    apiBomb(id);
+    setBombTimer(5);
+
+    // Spill av eksplosjons-lyd etter 1 sekund
+    setTimeout(() => {
+      const boom = new Audio('/sounds/explosion.mp3');
+      boom.play().catch(() => {});
+    }, 1000);
+
+    // Nedtelling vises i UI
+    const iv = setInterval(() => {
+      setBombTimer(bt => {
+        if (bt <= 1) {
+          clearInterval(iv);
+          return 0;
+        }
+        return bt - 1;
       });
-      return unsub;                      // Avslutt abonnement ved unmount
-    }, []);
-  
-    // Memoized funksjon for å kalle joinGame-API
-    const joinGame = useCallback(id => apiJoin(id), []);
-  
-    // Memoized funksjon for å flytte spiller via API
-    const movePlayer = useCallback(
-      (id, dx, dy) => apiMove(id, dx, dy),
-      []
-    );
-  
-    // Memoized funksjon for å plassere bombe og starte nedtelling
-    const placeBomb = useCallback(id => {
-        apiBomb(id);             // Call the mock API
-        const FUSE = 1;           // Actual fuse time in seconds
-        setBombTimer(FUSE);       // Start countdown from 1 second
-      
-        const iv = setInterval(() => {
-          setBombTimer(bt => {
-            if (bt <= 1) {        // When timer reaches 0, stop interval
-              clearInterval(iv);
-              return 0;
-            }
-            return bt - 1;        // Decrease timer by 1 each second
-          });
-        }, 1000);
-      }, []);
-      
-  
-    // Returnerer provider med alle verdier og funksjoner i context
-    return (
-      <GameContext.Provider value={{
-        map,
-        gameOver,
-        bombTimer,
-        joinGame,
-        movePlayer,
-        placeBomb
-      }}>
-        {children}
-      </GameContext.Provider>
-    );
-  }
-  
-  export function useGame() {
-    const ctx = useContext(GameContext);    // Henter context-verdier
-    if (!ctx) throw new Error(
-      'useGame must be used within GameProvider'
-    );
-    return ctx;                             // Returnerer map, gameOver, bombTimer og API-funksjoner
-  }
+    }, 1000);
+  }, []);
+
+  return (
+    <GameContext.Provider value={{
+      map,
+      gameOver,
+      bombTimer,
+      joinGame,
+      movePlayer,
+      placeBomb
+    }}>
+      {children}
+    </GameContext.Provider>
+  );
+}
+
+export function useGame() {
+  const ctx = useContext(GameContext);
+  if (!ctx) throw new Error('useGame must be used within GameProvider');
+  return ctx;
+}
+
   
   /*
   Denne filen, GameContext.jsx, definerer en React Context og en Provider for spillets state. 

@@ -27,31 +27,42 @@ export function GameProvider({ children }) {
   const joinGame = useCallback(id => apiJoin(id), []);
   const movePlayer = useCallback((id, dx, dy) => apiMove(id, dx, dy), []);
 
-  const placeBomb = useCallback(id => {
-    // **Spill av fuse-lyd umiddelbart** (bruker Space eller knapp er en bruker­handling)
-    const fuseSound = new Audio('/sounds/fuse.mp3');
-    fuseSound.play().catch(() => {/* ignorér autoplay-feil */});
+const placeBomb = useCallback(id => {
+  // opprett og spill av fuse-lyd
+  const fuseSound = new Audio('/sounds/fuse.mp3');
+  fuseSound.currentTime = 0;
+  fuseSound.play().catch(() => { /* ignorér autoplay-feil */ });
 
-    apiBomb(id);
-    setBombTimer(5);
+  // kall mock API og start teller
+  apiBomb(id);
+  setBombTimer(5);
 
-    // Spill av eksplosjons-lyd etter 1 sekund
-    setTimeout(() => {
-      const boom = new Audio('/sounds/explosion.mp3');
-      boom.play().catch(() => {});
-    }, 1000);
+  // planlegg eksplosjonen
+  const explosionTimeout = setTimeout(() => {
+    // stopp fuse-lyden før eksplosjon
+    fuseSound.pause();
+    fuseSound.currentTime = 0;
 
-    // Nedtelling vises i UI
-    const iv = setInterval(() => {
-      setBombTimer(bt => {
-        if (bt <= 1) {
-          clearInterval(iv);
-          return 0;
-        }
-        return bt - 1;
-      });
-    }, 1000);
-  }, []);
+    // spill eksplosjons-lyd
+    const boom = new Audio('/sounds/explosion.mp3');
+    boom.currentTime = 0;
+    boom.play().catch(() => {});
+
+  }, 1000);
+
+  // nedtelling i UI
+  const iv = setInterval(() => {
+    setBombTimer(bt => {
+      if (bt <= 1) {
+        clearInterval(iv);
+        clearTimeout(explosionTimeout);
+        return 0;
+      }
+      return bt - 1;
+    });
+  }, 1000);
+}, []);
+
 
   return (
     <GameContext.Provider value={{

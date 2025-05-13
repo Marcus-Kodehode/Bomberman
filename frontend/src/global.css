@@ -1,22 +1,14 @@
-/* ========================================================================
-   Imports
-   ======================================================================== */
 @import url('https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Dancing+Script&display=swap');
 
-
-/* ========================================================================
-   Theme Variables
-   ======================================================================== */
+/* Theme Variables */
 :root {
-  /* Base colors */
-  --bg:             #0f0f17;    /* Very dark anthracite */
-  --panel-bg:       #27293d;    /* Sidebar & header */
-  --text:           #f2e8cf;    /* Warm ivory */
-  --text-accent:    #ff9f00;    /* Logo-inspired orange */
-  --board-bg:       #0f0f17;    /* Game area background */
-  --gap:            #13131d;    /* Grid gap color */
+  --bg:             #0f0f17;
+  --panel-bg:       #27293d;
+  --text:           #f2e8cf;
+  --text-accent:    #ff9f00;
+  --board-bg:       #0f0f17;
+  --gap:            #13131d;
 
-  /* Tile colors */
   --empty:          #1e1e2f;
   --wall-fixed:     #2e2e3a;
   --wall-dest:      #8b0000;
@@ -24,19 +16,14 @@
   --bomb:           #ff4500;
   --explosion:      #ffd700;
 
-  /* UI accents */
   --accent:         #f5a623;
   --accent-dark:    #d17d11;
 
-  /* Fonts */
   --font-body:      'Luckiest Guy', cursive;
   --font-credit:    'Dancing Script', cursive;
 }
 
-
-/* ========================================================================
-   Reset & Base Styles
-   ======================================================================== */
+/* Reset & Base */
 *,
 *::before,
 *::after {
@@ -47,7 +34,7 @@
 html, body {
   width: 100%;
   height: 100%;
-  overflow: hidden;           /* Disable page scrolling */
+  overflow: hidden;
 }
 body {
   font-family: var(--font-body);
@@ -55,21 +42,23 @@ body {
   color: var(--text);
 }
 
-
-/* ========================================================================
-   App Container
-   ======================================================================== */
+/* App Container */
 .app-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;  /* left-panel + sidebar */
   height: 100vh;
   width: 100vw;
 }
 
+/* Left Panel (header + grid) */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
 
-/* ========================================================================
-   Header
-   ======================================================================== */
+/* Header */
 .header {
   background: var(--panel-bg);
   padding: 0.75rem;
@@ -81,20 +70,14 @@ body {
   font-size: 1.5rem;
 }
 
-
-/* ========================================================================
-   Main Layout (Grid + Sidebar)
-   ======================================================================== */
+/* Main Layout */
 .main {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-
-/* ========================================================================
-   Grid Wrapper
-   ======================================================================== */
+/* Grid Wrapper */
 .grid-wrapper {
   position: relative;
   flex: 1;
@@ -118,10 +101,7 @@ body {
   z-index: 5;
 }
 
-
-/* ========================================================================
-   Sidebar
-   ======================================================================== */
+/* Sidebar */
 .sidebar {
   width: 220px;
   background: var(--panel-bg);
@@ -129,15 +109,12 @@ body {
   border-left: 2px solid var(--gap);
   display: flex;
   flex-direction: column;
-  /* Ingen scrollbar – alt må få plass */
 }
-
 .sidebar h2 {
   color: var(--text-accent);
   font-size: 1.2rem;
   margin-bottom: 0.5rem;
 }
-
 .sidebar ul {
   list-style: disc inside;
   margin-bottom: 0.75rem;
@@ -145,10 +122,7 @@ body {
   line-height: 1.3;
 }
 
-
-/* ------------------------------------------------------------------------
-   Button Grid in Sidebar
-   ------------------------------------------------------------------------ */
+/* Button Grid */
 .sidebar .btns {
   display: flex;
   flex-wrap: wrap;
@@ -171,10 +145,7 @@ body {
   transform: scale(1.05);
 }
 
-
-/* ========================================================================
-   Legend
-   ======================================================================== */
+/* Legend */
 .legend {
   margin-bottom: 0.75rem;
 }
@@ -202,15 +173,12 @@ body {
 .legend-box.bomb       { background: var(--bomb); }
 .legend-box.explosion  { background: var(--explosion); }
 
-
-/* ========================================================================
-   Footer Logos & Credit
-   ======================================================================== */
+/* Footer Logos & Credit */
 .footer-logos {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: auto;           /* Push to bottom */
+  margin-top: auto;
   padding-top: 0.5rem;
   gap: 0.4rem;
 }
@@ -225,19 +193,13 @@ body {
   color: var(--text);
 }
 
-
-/* ========================================================================
-   Loading State
-   ======================================================================== */
+/* Loading */
 .loading {
   color: #aaa;
   font-size: 1rem;
 }
 
-
-/* ========================================================================
-   Overlays (Start Screen & Game Over)
-   ======================================================================== */
+/* Overlays */
 .overlay {
   position: absolute;
   inset: 0;
@@ -266,12 +228,12 @@ body {
   transform: scale(1.05);
 }
 
-/* Start Screen Specific */
+/* Start Screen */
 .overlay.start-screen {
   background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.8),
-    rgba(0, 0, 0, 0.95)
+    rgba(0,0,0,0.8),
+    rgba(0,0,0,0.95)
   );
 }
 .overlay.start-screen .logo {

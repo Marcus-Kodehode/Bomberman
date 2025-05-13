@@ -1,90 +1,83 @@
-// src/App.jsx
-import React, { useState, useEffect } from 'react';                 // Import React + hooks
-import Grid from './components/Grid/Grid';                          // Spillebrett-komponenten
-import { useGame } from './context/GameContext';                    // Custom hook for spill-state
+import React, { useState, useEffect } from 'react';
+import Grid from './components/Grid/Grid';
+import { useGame } from './context/GameContext';
 
 export default function App() {
   const {
-    map,           // 2D-array: kartet
-    gameOver,      // true når spilleren har tapt
-    bombTimer,     // nedtelling til eksplosjon
-    joinGame,      // starter spillet
-    movePlayer,    // flytt‐funksjon
-    placeBomb      // plassér bombe‐funksjon
+    map,
+    gameOver,
+    bombTimer,
+    joinGame,
+    movePlayer,
+    placeBomb
   } = useGame();
 
-  const [started, setStarted] = useState(false);                    // om spillet har startet
+  const [started, setStarted] = useState(false);
 
-  // Når brukeren trykker «Start Game», kalles joinGame
+  // Start game when user clicks
   useEffect(() => {
     if (started) joinGame('player1');
   }, [started, joinGame]);
 
-  // Tastaturstyring: W/A/S/D, Space, P
+  // Keyboard controls
   useEffect(() => {
     if (!started || gameOver) return;
     const onKey = e => {
       switch (e.key) {
         case 'w': case 'W':
-          movePlayer('player1', 0, -1); break;                    // opp
+          movePlayer('player1', 0, -1); break;
         case 's': case 'S':
-          movePlayer('player1', 0,  1); break;                    // ned
+          movePlayer('player1', 0, 1); break;
         case 'a': case 'A':
-          movePlayer('player1', -1, 0); break;                    // venstre
+          movePlayer('player1', -1, 0); break;
         case 'd': case 'D':
-          movePlayer('player1', 1,  0); break;                    // høyre
+          movePlayer('player1', 1, 0); break;
         case ' ':
-          placeBomb('player1'); break;                            // legg bombe
+          placeBomb('player1'); break;
         case 'p': case 'P':
-          window.location.reload();                                // restart
-          break;
+          window.location.reload(); break;
+        default:
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [started, gameOver, movePlayer, placeBomb]);
 
-  // ** Start‐skjerm **
+  // Start‐screen overlay
   if (!started) {
     return (
       <div className="overlay start-screen">
-        <img
-          src="/images/Logo.png"
-          alt="Bomberman Logo"
-          className="logo"                                      // Spillelogo øverst
-        />
-        <button
-          className="start-btn"
-          onClick={() => setStarted(true)}                       // Start
-        >
+        <img src="/images/Logo.png" alt="Bomberman Logo" className="logo" />
+        <button className="start-btn" onClick={() => setStarted(true)}>
           Start Game
         </button>
       </div>
     );
   }
 
-  // ** Game Over‐skjerm **
+  // Game Over overlay
   if (gameOver) {
     return (
       <div className="overlay">
         <h2>Game Over!</h2>
-        <button onClick={() => window.location.reload()}>      {/* Restart */}
+        <button onClick={() => window.location.reload()}>
           Restart
         </button>
       </div>
     );
   }
 
-  // ** Hoved‐UI under spilling **
+  // Main UI
   return (
     <div className="app-container">
-      <header className="header">
-        <h1>The Mad Bomberman</h1>
-      </header>
+      {/* Left panel: header + grid */}
+      <div className="left-panel">
+        <header className="header">
+          <h1>The Mad Bomberman</h1>
+        </header>
 
-      <div className="main">
         <div className="grid-wrapper">
-          {bombTimer > 0 && (                                     // vis nedtelling
+          {bombTimer > 0 && (
             <div className="bomb-timer">
               Bomb explodes in {bombTimer}s
             </div>
@@ -92,65 +85,65 @@ export default function App() {
 
           {!map
             ? <p className="loading">Loading gamedata…</p>
-            : <Grid tiles={map} />                              // rendrer brettet
+            : <Grid tiles={map} />
           }
         </div>
+      </div>
 
-        <aside className="sidebar">
-          <h2>Instructions</h2>
+      {/* Right sidebar */}
+      <aside className="sidebar">
+        <h2>Instructions</h2>
+        <ul>
+          <li>W/A/S/D – move</li>
+          <li>Space – drop bomb</li>
+          <li>P – restart</li>
+        </ul>
+
+        <div className="btns">
+          <button onClick={() => movePlayer('player1', 0, -1)}>Up</button>
+          <button onClick={() => movePlayer('player1', 0, 1)}>Down</button>
+          <button onClick={() => movePlayer('player1', -1, 0)}>Left</button>
+          <button onClick={() => movePlayer('player1', 1, 0)}>Right</button>
+          <button onClick={() => placeBomb('player1')}>Bomb</button>
+        </div>
+
+        <div className="legend">
+          <h3>Color Legend</h3>
           <ul>
-            <li>W/A/S/D – move</li>
-            <li>Space – drop bomb</li>
-            <li>P – restart</li>
+            <li><span className="legend-box wall-fixed" />Indestructible Wall</li>
+            <li><span className="legend-box wall-dest" />Destructible Wall</li>
+            <li><span className="legend-box empty" />Empty Space</li>
+            <li><span className="legend-box player" />Player</li>
+            <li><span className="legend-box bomb" />Bomb (explodes in {bombTimer}s)</li>
+            <li><span className="legend-box explosion" />Explosion</li>
           </ul>
+        </div>
 
-          <div className="btns">
-            <button onClick={() => movePlayer('player1', 0, -1)}>Up</button>
-            <button onClick={() => movePlayer('player1', 0, 1)}>Down</button>
-            <button onClick={() => movePlayer('player1', -1, 0)}>Left</button>
-            <button onClick={() => movePlayer('player1', 1, 0)}>Right</button>
-            <button onClick={() => placeBomb('player1')}>Bomb</button>
-          </div>
-
-          <div className="legend">
-            <h3>Color Legend</h3>
-            <ul>
-              <li><span className="legend-box wall-fixed" />Indestructible Wall</li>
-              <li><span className="legend-box wall-dest" />Destructible Wall</li>
-              <li><span className="legend-box empty" />Empty Space</li>
-              <li><span className="legend-box player" />Player</li>
-              <li><span className="legend-box bomb" />Bomb (explodes in {bombTimer}s)</li>
-              <li><span className="legend-box explosion" />Explosion</li>
-            </ul>
-          </div>
-
-          {/* Klikkbar logo + egen logo + credit */}
-          <div className="footer-logos">
+        <div className="footer-logos">
+          <img
+            src="/images/Logo.png"
+            alt="Bomberman Logo"
+            className="footer-logo"
+          />
+          <a
+            href="https://github.com/Marcus-Kodehode"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <img
-              src="/images/Logo.png"
-              alt="Bomberman Logo"
+              src="/images/MBlogo.png"
+              alt="The Mad Bomberman GitHub"
               className="footer-logo"
             />
-
-            <a
-              href="https://github.com/Marcus-Kodehode"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                src="/images/MBlogo.png"
-                alt="The Mad Bomberman GitHub"
-                className="footer-logo"
-              />
-            </a>
-
-            <div className="credit">design by Børresen Utvikling</div>
-          </div>
-        </aside>
-      </div>
+          </a>
+          <div className="credit">design by Børresen Utvikling</div>
+        </div>
+      </aside>
     </div>
   );
 }
+
+
 
 
 /*
